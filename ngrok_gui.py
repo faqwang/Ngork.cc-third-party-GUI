@@ -155,25 +155,54 @@ class TunnelProcess:
             return False, "隧道已在运行中"
 
         try:
-            # 构建命令
-            cmd = [
-                "sunny.exe",
-                "--server", server,
-                "--key", key,
-                "--log", "stdout"
-            ]
+            # 检查可用的sunny客户端
+            sunny_py = "sunny.py"
+            sunny_exe = "sunny.exe"
 
-            # 启动进程
+            cmd = None
+            client_type = None
+
+            # 优先使用EXE版本
+            if os.path.exists(sunny_exe):
+                cmd = [
+                    sunny_exe,
+                    "-s", server,
+                    "-k", key,
+                    "-l", "stdout"
+                ]
+                client_type = "EXE版本"
+            # 备选使用Python版本
+            elif os.path.exists(sunny_py):
+                # Python版本使用 --clientid 参数，只需要clientid（key就是clientid）
+                cmd = [
+                    sys.executable,  # Python解释器
+                    sunny_py,
+                    "--clientid=" + key  # 只需要clientid，不需要server
+                ]
+                client_type = "Python版本"
+            else:
+                # 两个都没有，提示下载
+                return False, ("找不到 sunny 客户端程序\n\n"
+                             "请下载以下任一版本：\n"
+                             "1. EXE版本: sunny.exe（推荐）\n"
+                             "2. Python版本: sunny.py\n\n"
+                             "下载地址: https://www.ngrok.cc")
+
+            # 启动进程 - 使用正确的编码设置
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+
             self.process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 stdin=subprocess.PIPE,
+                startupinfo=startupinfo,
                 creationflags=subprocess.CREATE_NO_WINDOW,
                 bufsize=1,
-                universal_newlines=True,
-                encoding='utf-8',
-                errors='replace'
+                universal_newlines=False,  # 改为False，手动处理编码
+                encoding=None,  # 不自动编码
+                errors=None
             )
 
             self.running = True
@@ -187,10 +216,10 @@ class TunnelProcess:
                 )
                 self.reader_thread.start()
 
-            return True, "隧道启动成功"
+            return True, f"隧道启动成功 (使用{client_type})"
 
-        except FileNotFoundError:
-            return False, "找不到 sunny.exe，请确保程序在正确的目录中"
+        except FileNotFoundError as e:
+            return False, f"启动失败: 找不到必要的程序文件\n{str(e)}"
         except Exception as e:
             return False, f"启动失败: {str(e)}"
 
@@ -216,11 +245,24 @@ class TunnelProcess:
     def _read_output(self, callback):
         """读取进程输出"""
         try:
-            for line in iter(self.process.stdout.readline, ''):
-                if line:
-                    log_line = line.rstrip()
-                    self.logs.append(log_line)  # 保存到历史
-                    callback(self.tunnel_name, log_line)
+            # 尝试多种编码方式读取
+            for raw_line in iter(self.process.stdout.readline, b''):
+                if raw_line:
+                    # 尝试多种编码解码
+                    line = None
+                    for encoding in ['utf-8', 'gbk', 'gb2312', 'cp936']:
+                        try:
+                            line = raw_line.decode(encoding).rstrip()
+                            break
+                        except:
+                            continue
+
+                    if line is None:
+                        # 如果所有编码都失败，使用替换模式
+                        line = raw_line.decode('utf-8', errors='replace').rstrip()
+
+                    self.logs.append(line)  # 保存到历史
+                    callback(self.tunnel_name, line)
                 if not self.running:
                     break
         except Exception as e:
@@ -262,6 +304,7 @@ class TunnelDialog(tk.Toplevel):
         self.transient(parent)
         self.grab_set()
 
+        # 先创建控件
         self._create_widgets()
 
         # 如果是编辑模式，填充数据
@@ -656,27 +699,50 @@ class NgrokGUI:
 
     def _edit_tunnel(self):
         """编辑隧道"""
+        print(f"[DEBUG] 开始编辑，current_tunnel_index = {self.current_tunnel_index}")
+
         if self.current_tunnel_index is None:
             messagebox.showwarning("警告", "请先选择一个隧道")
             return
 
-        tunnel = self.config.get(self.current_tunnel_index)
+        # 保存当前索引，防止对话框打开时失去焦点导致索引被清空
+        edit_index = self.current_tunnel_index
+
+        tunnel = self.config.get(edit_index)
+        print(f"[DEBUG] 获取到的隧道数据: {tunnel}")
+
         if not tunnel:
             return
 
         dialog = TunnelDialog(self.root, "编辑隧道", tunnel)
         self.root.wait_window(dialog)
 
+        print(f"[DEBUG] 对话框关闭，result = {dialog.result}")
+
         if dialog.result:
-            self.config.update(
-                self.current_tunnel_index,
+            print(f"[DEBUG] 准备更新索引 {edit_index}")
+            print(f"[DEBUG] 新数据: {dialog.result}")
+
+            success = self.config.update(
+                edit_index,  # 使用保存的索引
                 dialog.result['name'],
                 dialog.result['server'],
                 dialog.result['key'],
                 dialog.result['auto_start']
             )
-            self._load_tunnels()
-            self._log_system("更新隧道: " + dialog.result['name'])
+
+            print(f"[DEBUG] 更新结果: {success}")
+            print(f"[DEBUG] 更新后的配置: {self.config.get_all()}")
+
+            if success:
+                # 恢复索引
+                self.current_tunnel_index = edit_index
+                self._load_tunnels()
+                self._restore_selection_after_reload()  # 恢复选中状态
+                print(f"[DEBUG] 刷新后 current_tunnel_index = {self.current_tunnel_index}")
+                self._log_system("更新隧道: " + dialog.result['name'])
+            else:
+                messagebox.showerror("错误", "保存配置失败")
 
     def _delete_tunnel(self):
         """删除隧道"""
