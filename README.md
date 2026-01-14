@@ -133,7 +133,7 @@ pip install pystray Pillow
 ## 文件说明
 
 - `ngrok_gui.py` - 主程序文件
-- `StartGUI.bat - Windows 启动脚本
+- `StartGUI.bat` - Windows 启动脚本
 - `tunnels.json` - 隧道配置文件（自动生成）
 - `requirements.txt` - 可选依赖列表
 - `sunny.exe` - Sunny-Ngrok 客户端程序
