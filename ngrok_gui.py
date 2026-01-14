@@ -421,11 +421,6 @@ class NgrokGUI:
         menubar = tk.Menu(self.root)
         self.root.config(menu=menubar)
 
-        # 文件菜单
-        file_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="文件", menu=file_menu)
-        file_menu.add_command(label="退出", command=self._on_closing)
-
         # 设置菜单
         self.settings_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="设置", menu=self.settings_menu)
