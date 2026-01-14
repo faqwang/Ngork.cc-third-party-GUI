@@ -98,6 +98,46 @@ class TunnelConfig:
         return self.tunnels
 
 
+class AppSettings:
+    """应用程序设置管理"""
+
+    def __init__(self, settings_file="settings.json"):
+        self.settings_file = settings_file
+        self.settings = {
+            "close_behavior": None  # None=询问, "minimize"=最小化到托盘, "exit"=退出程序
+        }
+        self.load()
+
+    def load(self):
+        """加载设置"""
+        if os.path.exists(self.settings_file):
+            try:
+                with open(self.settings_file, 'r', encoding='utf-8') as f:
+                    loaded_settings = json.load(f)
+                    self.settings.update(loaded_settings)
+            except Exception as e:
+                print(f"加载设置失败: {e}")
+
+    def save(self):
+        """保存设置"""
+        try:
+            with open(self.settings_file, 'w', encoding='utf-8') as f:
+                json.dump(self.settings, f, ensure_ascii=False, indent=2)
+            return True
+        except Exception as e:
+            print(f"保存设置失败: {e}")
+            return False
+
+    def get(self, key, default=None):
+        """获取设置"""
+        return self.settings.get(key, default)
+
+    def set(self, key, value):
+        """设置值"""
+        self.settings[key] = value
+        return self.save()
+
+
 class TunnelProcess:
     """隧道进程管理"""
 
@@ -316,6 +356,7 @@ class NgrokGUI:
 
         # 配置和进程管理
         self.config = TunnelConfig()
+        self.settings = AppSettings()  # 添加设置管理
         self.tunnel_processes = {}  # 字典：隧道索引 -> TunnelProcess
         self.current_tunnel_index = None
         self.last_selected_index = None  # 记住最后选择的隧道
@@ -391,6 +432,8 @@ class NgrokGUI:
         self._update_startup_menu()
         if TRAY_AVAILABLE:
             self.settings_menu.add_command(label="最小化到托盘", command=self._minimize_to_tray)
+            self.settings_menu.add_separator()
+            self.settings_menu.add_command(label="关闭按钮行为设置", command=self._change_close_behavior)
 
         # 帮助菜单
         help_menu = tk.Menu(menubar, tearoff=0)
@@ -878,21 +921,98 @@ class NgrokGUI:
 
             def on_quit(icon, item):
                 icon.stop()
-                self.root.quit()
+                self._quit_application()
 
             def on_show(icon, item):
-                icon.stop()
-                self.root.deiconify()
+                self.root.after(0, self._show_window)
 
             menu = pystray.Menu(
-                pystray.MenuItem('显示窗口', on_show),
+                pystray.MenuItem('显示窗口', on_show, default=True),
                 pystray.MenuItem('退出', on_quit)
             )
 
-            self.tray_icon = pystray.Icon("SunnyNgrok", create_image(), "Sunny-Ngrok 管理器", menu)
+            self.tray_icon = pystray.Icon(
+                "SunnyNgrok",
+                create_image(),
+                "Sunny-Ngrok 管理器",
+                menu
+            )
 
             # 在新线程中运行托盘图标
             threading.Thread(target=self.tray_icon.run, daemon=True).start()
+
+    def _change_close_behavior(self):
+        """修改关闭按钮行为设置"""
+        # 创建设置对话框
+        dialog = tk.Toplevel(self.root)
+        dialog.title("关闭按钮行为设置")
+        dialog.geometry("350x230")
+        dialog.resizable(False, False)
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        # 居中显示
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2)
+        y = (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
+        dialog.geometry(f"+{x}+{y}")
+
+        # 提示文本
+        ttk.Label(
+            dialog,
+            text="点击窗口关闭按钮时：",
+            font=("", 10, "bold")
+        ).pack(pady=10)
+
+        # 获取当前设置
+        current_behavior = self.settings.get("close_behavior")
+
+        # 单选按钮变量
+        behavior_var = tk.StringVar(value=current_behavior if current_behavior else "ask")
+
+        # 单选按钮框架
+        radio_frame = ttk.Frame(dialog)
+        radio_frame.pack(pady=5)
+
+        ttk.Radiobutton(
+            radio_frame,
+            text="每次询问",
+            variable=behavior_var,
+            value="ask"
+        ).pack(anchor=tk.W, pady=5, padx=20)
+
+        ttk.Radiobutton(
+            radio_frame,
+            text="最小化到托盘",
+            variable=behavior_var,
+            value="minimize"
+        ).pack(anchor=tk.W, pady=5, padx=20)
+
+        ttk.Radiobutton(
+            radio_frame,
+            text="直接退出程序",
+            variable=behavior_var,
+            value="exit"
+        ).pack(anchor=tk.W, pady=5, padx=20)
+
+        # 按钮框架
+        button_frame = ttk.Frame(dialog)
+        button_frame.pack(pady=20)
+
+        def on_save():
+            selected = behavior_var.get()
+            if selected == "ask":
+                self.settings.set("close_behavior", None)
+            else:
+                self.settings.set("close_behavior", selected)
+            messagebox.showinfo("成功", "设置已保存")
+            dialog.destroy()
+
+        def on_cancel():
+            dialog.destroy()
+
+        ttk.Button(button_frame, text="保存", command=on_save, width=10).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="取消", command=on_cancel, width=10).pack(side=tk.LEFT, padx=5)
 
     def _show_about(self):
         """显示关于对话框"""
@@ -913,6 +1033,39 @@ class NgrokGUI:
 """
         messagebox.showinfo("关于", about_text)
 
+    def _quit_application(self):
+        """真正退出应用程序"""
+        # 检查是否有隧道在运行
+        running_tunnels = []
+        for idx, process in self.tunnel_processes.items():
+            if process.is_running():
+                tunnel = self.config.get(idx)
+                if tunnel:
+                    running_tunnels.append(tunnel['name'])
+
+        if running_tunnels:
+            tunnel_list = "\n".join(running_tunnels)
+            if messagebox.askyesno("确认", f"以下隧道正在运行中：\n{tunnel_list}\n\n确定要退出吗？"):
+                # 停止所有运行中的隧道
+                for idx, process in self.tunnel_processes.items():
+                    if process.is_running():
+                        process.stop()
+                # 关闭单实例服务器
+                if self.instance_server:
+                    try:
+                        self.instance_server.close()
+                    except:
+                        pass
+                self.root.quit()
+        else:
+            # 关闭单实例服务器
+            if self.instance_server:
+                try:
+                    self.instance_server.close()
+                except:
+                    pass
+            self.root.quit()
+
     def _log_system(self, message):
         """添加系统日志（不属于任何隧道的日志）"""
         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -927,7 +1080,107 @@ class NgrokGUI:
 
     def _on_closing(self):
         """关闭窗口"""
-        # 检查是否有隧道在运行
+        # 如果安装了托盘支持，根据设置决定行为
+        if TRAY_AVAILABLE:
+            close_behavior = self.settings.get("close_behavior")
+
+            # 如果已经设置了默认行为，直接执行
+            if close_behavior == "minimize":
+                self._minimize_to_tray()
+                return
+            elif close_behavior == "exit":
+                self._quit_application()
+                return
+
+            # 第一次使用，询问用户并记住选择
+            # 创建自定义对话框
+            dialog = tk.Toplevel(self.root)
+            dialog.title("关闭选项")
+            dialog.geometry("380x180")
+            dialog.resizable(False, False)
+            dialog.transient(self.root)
+            dialog.grab_set()
+
+            # 居中显示
+            dialog.update_idletasks()
+            x = (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2)
+            y = (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
+            dialog.geometry(f"+{x}+{y}")
+
+            result = {'action': None}
+
+            # 提示文本
+            ttk.Label(
+                dialog,
+                text="请选择关闭方式：",
+                font=("", 10)
+            ).pack(pady=15)
+
+            # 记住选择的复选框
+            remember_var = tk.BooleanVar(value=True)
+            ttk.Checkbutton(
+                dialog,
+                text="记住我的选择（可在设置中修改）",
+                variable=remember_var
+            ).pack(pady=5)
+
+            # 按钮框架
+            button_frame = ttk.Frame(dialog)
+            button_frame.pack(pady=10)
+
+            def on_minimize():
+                result['action'] = 'minimize'
+                result['remember'] = remember_var.get()
+                dialog.destroy()
+
+            def on_exit():
+                result['action'] = 'exit'
+                result['remember'] = remember_var.get()
+                dialog.destroy()
+
+            def on_cancel():
+                result['action'] = 'cancel'
+                dialog.destroy()
+
+            ttk.Button(
+                button_frame,
+                text="最小化到托盘",
+                command=on_minimize,
+                width=15
+            ).pack(side=tk.LEFT, padx=5)
+
+            ttk.Button(
+                button_frame,
+                text="退出程序",
+                command=on_exit,
+                width=15
+            ).pack(side=tk.LEFT, padx=5)
+
+            ttk.Button(
+                button_frame,
+                text="取消",
+                command=on_cancel,
+                width=10
+            ).pack(side=tk.LEFT, padx=5)
+
+            # 等待对话框关闭
+            self.root.wait_window(dialog)
+
+            if result['action'] == 'minimize':
+                # 如果选择记住，保存设置
+                if result.get('remember', False):
+                    self.settings.set("close_behavior", "minimize")
+                self._minimize_to_tray()
+            elif result['action'] == 'exit':
+                # 如果选择记住，保存设置
+                if result.get('remember', False):
+                    self.settings.set("close_behavior", "exit")
+                self._quit_application()
+            # 如果是 cancel 或关闭对话框，什么都不做
+
+            return
+
+        # 没有托盘支持时，检查是否有隧道在运行
         running_tunnels = []
         for idx, process in self.tunnel_processes.items():
             if process.is_running():
