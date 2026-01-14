@@ -31,14 +31,14 @@
 
 ### 3. 启动 GUI 管理器
 
-双击运行 `启动GUI管理器.bat`
+双击运行 `StartGUI.bat`
 
 或者在命令行中运行：
 ```bash
 python ngrok_gui.py
 ```
 
-### 3. 添加隧道配置
+### 4. 添加隧道配置
 
 1. 点击左侧的 "添加" 按钮
 2. 填写隧道信息：
@@ -48,7 +48,7 @@ python ngrok_gui.py
    - **开机自动启动**: 勾选后该隧道会在程序启动时自动运行
 3. 点击 "确定" 保存
 
-### 4. 启动隧道
+### 5. 启动隧道
 
 1. 在左侧列表中选择一个隧道
 2. 点击右侧的 "启动隧道" 按钮
@@ -133,7 +133,7 @@ pip install pystray Pillow
 ## 文件说明
 
 - `ngrok_gui.py` - 主程序文件
-- `StartGUI.bat - Windows 启动脚本
+- `StartGUI.bat` - Windows 启动脚本
 - `tunnels.json` - 隧道配置文件（自动生成）
 - `requirements.txt` - 可选依赖列表
 - `sunny.exe` - Sunny-Ngrok 客户端程序
