@@ -1,0 +1,5 @@
+# Sunny-Ngrok GUI 管理器 - 可选依赖
+
+# 系统托盘支持（可选）
+pystray>=0.19.4
+Pillow>=10.0.0
