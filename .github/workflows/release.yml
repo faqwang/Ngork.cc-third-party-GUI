@@ -26,7 +26,7 @@ jobs:
       - name: Build (directory mode)
         shell: pwsh
         run: |
-          & .\build.bat "$env:pythonLocation\python.exe"
+          python -m PyInstaller -w ngrok_gui.py -n SunnyNgrokGUI
 
       - name: Package artifact
         shell: pwsh
