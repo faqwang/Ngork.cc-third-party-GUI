@@ -294,8 +294,20 @@ class TunnelDialog(tk.Toplevel):
     def __init__(self, parent, title="添加隧道", tunnel=None):
         super().__init__(parent)
         self.title(title)
-        self.geometry("400x250")
+        self.geometry("450x480")
         self.resizable(False, False)
+
+        # 现代化配色
+        self.colors = {
+            'bg': '#F5F7FA',
+            'card': '#FFFFFF',
+            'primary': '#0078D4',
+            'text_primary': '#1F2937',
+            'text_secondary': '#6B7280',
+            'border': '#E5E7EB'
+        }
+
+        self.configure(bg=self.colors['bg'])
 
         self.result = None
         self.tunnel = tunnel
@@ -322,39 +334,131 @@ class TunnelDialog(tk.Toplevel):
 
     def _create_widgets(self):
         """创建控件"""
-        # 主框架
-        main_frame = ttk.Frame(self, padding="20")
-        main_frame.pack(fill=tk.BOTH, expand=True)
+        # 主卡片容器
+        card = tk.Frame(self, bg=self.colors['card'], relief='flat', bd=0)
+        card.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        card.configure(highlightbackground=self.colors['border'], highlightthickness=1)
+
+        # 内容区域
+        content = tk.Frame(card, bg=self.colors['card'])
+        content.pack(fill=tk.BOTH, expand=True, padx=25, pady=25)
 
         # 名称
-        ttk.Label(main_frame, text="隧道名称:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        name_frame = tk.Frame(content, bg=self.colors['card'])
+        name_frame.pack(fill=tk.X, pady=8)
+
+        tk.Label(
+            name_frame,
+            text="隧道名称",
+            font=('Microsoft YaHei UI', 9),
+            bg=self.colors['card'],
+            fg=self.colors['text_secondary']
+        ).pack(anchor='w', pady=(0, 5))
+
         self.name_var = tk.StringVar()
-        ttk.Entry(main_frame, textvariable=self.name_var, width=30).grid(row=0, column=1, pady=5)
+        name_entry = tk.Entry(
+            name_frame,
+            textvariable=self.name_var,
+            font=('Microsoft YaHei UI', 10),
+            relief='flat',
+            bd=0,
+            highlightthickness=1,
+            highlightbackground=self.colors['border'],
+            highlightcolor=self.colors['primary']
+        )
+        name_entry.pack(fill=tk.X, ipady=8, ipadx=10)
 
         # 服务器
-        ttk.Label(main_frame, text="服务器地址:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        server_frame = tk.Frame(content, bg=self.colors['card'])
+        server_frame.pack(fill=tk.X, pady=8)
+
+        tk.Label(
+            server_frame,
+            text="服务器地址",
+            font=('Microsoft YaHei UI', 9),
+            bg=self.colors['card'],
+            fg=self.colors['text_secondary']
+        ).pack(anchor='w', pady=(0, 5))
+
         self.server_var = tk.StringVar(value="server.example.com:443")
-        ttk.Entry(main_frame, textvariable=self.server_var, width=30).grid(row=1, column=1, pady=5)
+        server_entry = tk.Entry(
+            server_frame,
+            textvariable=self.server_var,
+            font=('Microsoft YaHei UI', 10),
+            relief='flat',
+            bd=0,
+            highlightthickness=1,
+            highlightbackground=self.colors['border'],
+            highlightcolor=self.colors['primary']
+        )
+        server_entry.pack(fill=tk.X, ipady=8, ipadx=10)
 
         # 密钥
-        ttk.Label(main_frame, text="隧道密钥:").grid(row=2, column=0, sticky=tk.W, pady=5)
+        key_frame = tk.Frame(content, bg=self.colors['card'])
+        key_frame.pack(fill=tk.X, pady=8)
+
+        tk.Label(
+            key_frame,
+            text="隧道密钥",
+            font=('Microsoft YaHei UI', 9),
+            bg=self.colors['card'],
+            fg=self.colors['text_secondary']
+        ).pack(anchor='w', pady=(0, 5))
+
         self.key_var = tk.StringVar()
-        ttk.Entry(main_frame, textvariable=self.key_var, width=30).grid(row=2, column=1, pady=5)
+        key_entry = tk.Entry(
+            key_frame,
+            textvariable=self.key_var,
+            font=('Microsoft YaHei UI', 10),
+            relief='flat',
+            bd=0,
+            highlightthickness=1,
+            highlightbackground=self.colors['border'],
+            highlightcolor=self.colors['primary']
+        )
+        key_entry.pack(fill=tk.X, ipady=8, ipadx=10)
 
         # 自动启动
         self.auto_start_var = tk.BooleanVar()
-        ttk.Checkbutton(
-            main_frame,
+        auto_start_check = tk.Checkbutton(
+            content,
             text="开机自动启动此隧道",
-            variable=self.auto_start_var
-        ).grid(row=3, column=0, columnspan=2, sticky=tk.W, pady=10)
+            variable=self.auto_start_var,
+            font=('Microsoft YaHei UI', 9),
+            bg=self.colors['card'],
+            fg=self.colors['text_primary'],
+            activebackground=self.colors['card'],
+            selectcolor=self.colors['card']
+        )
+        auto_start_check.pack(anchor='w', pady=(15, 20))
 
-        # 按钮
-        button_frame = ttk.Frame(main_frame)
-        button_frame.grid(row=4, column=0, columnspan=2, pady=10)
+        # 按钮区域
+        button_frame = tk.Frame(content, bg=self.colors['card'])
+        button_frame.pack(fill=tk.X, pady=(10, 0))
 
-        ttk.Button(button_frame, text="确定", command=self._on_ok, width=10).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="取消", command=self._on_cancel, width=10).pack(side=tk.LEFT, padx=5)
+        # 应用ttk样式
+        style = ttk.Style()
+        style.configure('Dialog.Primary.TButton',
+                       background=self.colors['primary'],
+                       foreground='white',
+                       font=('Microsoft YaHei UI', 9),
+                       padding=(20, 8))
+
+        ok_btn = ttk.Button(
+            button_frame,
+            text="确定",
+            command=self._on_ok,
+            style='Dialog.Primary.TButton'
+        )
+        ok_btn.pack(side=tk.LEFT, padx=(0, 10))
+
+        cancel_btn = ttk.Button(
+            button_frame,
+            text="取消",
+            command=self._on_cancel,
+            style='Secondary.TButton'
+        )
+        cancel_btn.pack(side=tk.LEFT)
 
     def _on_ok(self):
         """确定按钮"""
@@ -395,7 +499,28 @@ class NgrokGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Sunny-Ngrok 管理器")
-        self.root.geometry("900x600")
+        self.root.geometry("1000x650")
+
+        # 现代化配色方案
+        self.colors = {
+            'primary': '#0078D4',      # 主色调 - 蓝色
+            'primary_dark': '#005A9E',  # 深蓝色
+            'primary_light': '#E3F2FD', # 浅蓝色背景
+            'success': '#10B981',       # 成功 - 绿色
+            'danger': '#EF4444',        # 危险 - 红色
+            'warning': '#F59E0B',       # 警告 - 橙色
+            'bg_main': '#F5F7FA',       # 主背景
+            'bg_card': '#FFFFFF',       # 卡片背景
+            'bg_header': '#E8EEF4',     # 头部背景
+            'text_primary': '#1F2937',  # 主文本
+            'text_secondary': '#6B7280',# 次要文本
+            'border': '#E5E7EB',        # 边框
+            'hover': '#F3F4F6'          # 悬停
+        }
+        # 菜单字体设置 - 适当提高菜单栏高度
+        self.menu_font = ('Microsoft YaHei UI', 10)
+        self.menu_item_font = ('Microsoft YaHei UI', 9)
+        self.toolbar_height = 25
 
         # 配置和进程管理
         self.config = TunnelConfig()
@@ -414,6 +539,9 @@ class NgrokGUI:
         self.instance_server = None
         self._start_instance_server()
 
+        # 应用现代化样式
+        self._apply_modern_style()
+
         # 创建界面
         self._create_menu()
         self._create_widgets()
@@ -427,6 +555,88 @@ class NgrokGUI:
 
         # 启动自动启动的隧道
         self._auto_start_tunnels()
+
+    def _apply_modern_style(self):
+        """应用现代化样式"""
+        style = ttk.Style()
+
+        # 设置主题
+        style.theme_use('clam')
+
+        # 配置整体背景
+        self.root.configure(bg=self.colors['bg_main'])
+
+        # 配置 Frame 样式
+        style.configure('Modern.TFrame', background=self.colors['bg_card'])
+        style.configure('Header.TFrame', background=self.colors['bg_header'])
+        style.configure('Main.TFrame', background=self.colors['bg_main'])
+
+        # 配置 Label 样式
+        style.configure('Title.TLabel',
+                       background=self.colors['bg_card'],
+                       foreground=self.colors['text_primary'],
+                       font=('Microsoft YaHei UI', 12, 'bold'))
+        style.configure('Header.TLabel',
+                       background=self.colors['bg_header'],
+                       foreground=self.colors['text_primary'],
+                       font=('Microsoft YaHei UI', 10, 'bold'))
+        style.configure('Modern.TLabel',
+                       background=self.colors['bg_card'],
+                       foreground=self.colors['text_secondary'],
+                       font=('Microsoft YaHei UI', 9))
+        style.configure('Status.TLabel',
+                       background=self.colors['bg_card'],
+                       foreground=self.colors['text_primary'],
+                       font=('Microsoft YaHei UI', 9, 'bold'))
+
+        # 配置 Button 样式 - 主按钮
+        style.configure('Primary.TButton',
+                       background=self.colors['primary'],
+                       foreground='white',
+                       borderwidth=0,
+                       focuscolor='none',
+                       font=('Microsoft YaHei UI', 9),
+                       padding=(15, 8))
+        style.map('Primary.TButton',
+                 background=[('active', self.colors['primary_dark']),
+                           ('pressed', self.colors['primary_dark']),
+                           ('disabled', '#E5E7EB')],
+                 foreground=[('disabled', 'black')])
+
+        # 配置 Button 样式 - 次要按钮
+        style.configure('Secondary.TButton',
+                       background=self.colors['bg_card'],
+                       foreground=self.colors['text_primary'],
+                       borderwidth=1,
+                       focuscolor='none',
+                       font=('Microsoft YaHei UI', 9),
+                       padding=(12, 6))
+        style.map('Secondary.TButton',
+                 background=[('active', self.colors['hover'])])
+
+        # 配置 Button 样式 - 危险按钮
+        style.configure('Danger.TButton',
+                       background=self.colors['danger'],
+                       foreground='white',
+                       borderwidth=0,
+                       focuscolor='none',
+                       font=('Microsoft YaHei UI', 9),
+                       padding=(12, 6))
+        style.map('Danger.TButton',
+                 background=[('active', '#DC2626'),  # 深红色悬停
+                           ('pressed', '#B91C1C'),  # 更深的红色按下
+                           ('disabled', '#E5E7EB')],
+                 foreground=[('disabled', 'black')])
+
+        # 配置 LabelFrame 样式
+        style.configure('Modern.TLabelframe',
+                       background=self.colors['bg_card'],
+                       borderwidth=0,
+                       relief='flat')
+        style.configure('Modern.TLabelframe.Label',
+                       background=self.colors['bg_card'],
+                       foreground=self.colors['text_primary'],
+                       font=('Microsoft YaHei UI', 10, 'bold'))
 
     def _start_instance_server(self):
         """启动单实例通信服务器"""
@@ -461,166 +671,530 @@ class NgrokGUI:
 
     def _create_menu(self):
         """创建菜单"""
-        menubar = tk.Menu(self.root)
-        self.root.config(menu=menubar)
-
         # 设置菜单
-        self.settings_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="设置", menu=self.settings_menu)
+        self.settings_menu = tk.Menu(self.root,
+                                    tearoff=0,
+                                    bg=self.colors['bg_card'],
+                                    fg=self.colors['text_primary'],
+                                    activebackground=self.colors['primary_light'],
+                                    activeforeground=self.colors['primary'],
+                                    relief='flat',
+                                    borderwidth=1,
+                                    font=self.menu_item_font)
         self._update_startup_menu()
         if TRAY_AVAILABLE:
-            self.settings_menu.add_command(label="最小化到托盘", command=self._minimize_to_tray)
+            self.settings_menu.add_command(label="   📌 最小化到托盘", command=self._minimize_to_tray)
             self.settings_menu.add_separator()
-            self.settings_menu.add_command(label="关闭按钮行为设置", command=self._change_close_behavior)
+            self.settings_menu.add_command(label="   🔧 关闭按钮行为设置", command=self._change_close_behavior)
 
         # 帮助菜单
-        help_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="帮助", menu=help_menu)
-        help_menu.add_command(label="关于", command=self._show_about)
+        self.help_menu = tk.Menu(self.root,
+                               tearoff=0,
+                               bg=self.colors['bg_card'],
+                               fg=self.colors['text_primary'],
+                               activebackground=self.colors['primary_light'],
+                               activeforeground=self.colors['primary'],
+                               relief='flat',
+                               borderwidth=1,
+                               font=self.menu_item_font)
+        self.help_menu.add_command(label="   ℹ️ 关于", command=self._show_about)
+
+    def _popup_menu(self, menu, widget):
+        """在按钮下方弹出菜单"""
+        try:
+            x = widget.winfo_rootx()
+            y = widget.winfo_rooty() + widget.winfo_height()
+            menu.tk_popup(x, y)
+        finally:
+            menu.grab_release()
+
+    def _show_settings_menu(self, event=None):
+        """显示设置菜单"""
+        self._popup_menu(self.settings_menu, self.settings_button)
+
+    def _show_help_menu(self, event=None):
+        """显示帮助菜单"""
+        self._popup_menu(self.help_menu, self.help_button)
 
     def _create_widgets(self):
         """创建主界面控件"""
-        # 主容器
-        main_container = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
-        main_container.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        # 顶部工具栏（自定义高度）
+        toolbar = tk.Frame(self.root, bg=self.colors['bg_card'], height=self.toolbar_height)
+        toolbar.pack(fill=tk.X)
+        toolbar.pack_propagate(False)
+        toolbar.configure(highlightbackground=self.colors['border'], highlightthickness=1)
 
-        # 左侧面板 - 隧道列表
-        left_frame = ttk.Frame(main_container)
-        main_container.add(left_frame, weight=1)
-
-        # 隧道列表标题
-        ttk.Label(left_frame, text="隧道列表", font=("", 10, "bold")).pack(pady=5)
-
-        # 隧道列表
-        list_frame = ttk.Frame(left_frame)
-        list_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-
-        scrollbar = ttk.Scrollbar(list_frame)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-        self.tunnel_listbox = tk.Listbox(
-            list_frame,
-            yscrollcommand=scrollbar.set,
-            font=("", 10)
+        self.settings_button = tk.Menubutton(
+            toolbar,
+            text="⚙️ 设置",
+            bg=self.colors['bg_card'],
+            fg=self.colors['text_primary'],
+            activebackground=self.colors['primary_light'],
+            activeforeground=self.colors['primary'],
+            relief='flat',
+            borderwidth=0,
+            font=self.menu_font,
+            padx=8,
+            pady=0
         )
-        self.tunnel_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.config(command=self.tunnel_listbox.yview)
+        self.settings_button.pack(side=tk.LEFT, padx=(8, 4), pady=2)
+        self.settings_button.configure(menu=self.settings_menu)
+        self.settings_button.bind("<Button-1>", self._show_settings_menu)
 
-        self.tunnel_listbox.bind('<<ListboxSelect>>', self._on_tunnel_select)
+        self.help_button = tk.Menubutton(
+            toolbar,
+            text="❓ 帮助",
+            bg=self.colors['bg_card'],
+            fg=self.colors['text_primary'],
+            activebackground=self.colors['primary_light'],
+            activeforeground=self.colors['primary'],
+            relief='flat',
+            borderwidth=0,
+            font=self.menu_font,
+            padx=8,
+            pady=0
+        )
+        self.help_button.pack(side=tk.LEFT, padx=(4, 8), pady=2)
+        self.help_button.configure(menu=self.help_menu)
+        self.help_button.bind("<Button-1>", self._show_help_menu)
+
+        # 主容器 - 使用现代化背景
+        main_container = tk.Frame(self.root, bg=self.colors['bg_main'])
+        main_container.pack(fill=tk.BOTH, expand=True)
+
+        # 创建左右分栏布局
+        # 左侧面板 - 隧道列表
+        left_panel = tk.Frame(main_container, bg=self.colors['bg_main'], width=320)
+        left_panel.pack(side=tk.LEFT, fill=tk.BOTH, padx=(10, 5), pady=(1, 10))
+        left_panel.pack_propagate(False)
+
+        # 左侧卡片容器
+        left_card = tk.Frame(left_panel, bg=self.colors['bg_card'], relief='flat', bd=0)
+        left_card.pack(fill=tk.BOTH, expand=True)
+
+        # 添加阴影效果（通过边框模拟）
+        left_card.configure(highlightbackground=self.colors['border'], highlightthickness=1)
+
+        # 隧道列表标题区域
+        header_frame = tk.Frame(left_card, bg=self.colors['bg_card'], height=50)
+        header_frame.pack(fill=tk.X, padx=15, pady=(15, 10))
+        header_frame.pack_propagate(False)
+
+        title_label = tk.Label(
+            header_frame,
+            text="隧道列表",
+            font=('Microsoft YaHei UI', 12, 'bold'),
+            bg=self.colors['bg_card'],
+            fg=self.colors['text_primary']
+        )
+        title_label.pack(side=tk.LEFT, anchor='w')
+
+        # 隧道列表容器 - 使用Canvas和Scrollbar实现可滚动的卡片列表
+        list_container = tk.Frame(left_card, bg=self.colors['bg_card'])
+        list_container.pack(fill=tk.BOTH, expand=True, padx=15, pady=(0, 10))
+
+        # 创建Canvas和Scrollbar
+        self.tunnel_canvas = tk.Canvas(
+            list_container,
+            bg=self.colors['bg_card'],
+            highlightthickness=0,
+            bd=0
+        )
+        self.tunnel_scrollbar = tk.Scrollbar(list_container, command=self.tunnel_canvas.yview, width=12)
+        self.tunnel_list_frame = tk.Frame(self.tunnel_canvas, bg=self.colors['bg_card'])
+
+        # 配置Canvas
+        self.tunnel_canvas.configure(yscrollcommand=self.tunnel_scrollbar.set)
+
+        # 布局Canvas（滚动条初始不显示）
+        self.tunnel_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # 在Canvas中创建窗口
+        self.canvas_frame = self.tunnel_canvas.create_window(
+            (0, 0),
+            window=self.tunnel_list_frame,
+            anchor='nw'
+        )
+
+        # 绑定配置事件以更新滚动区域
+        self.tunnel_list_frame.bind('<Configure>', self._on_frame_configure)
+        self.tunnel_canvas.bind('<Configure>', self._on_canvas_configure)
+
+        # 绑定鼠标滚轮事件到canvas和list_frame
+        self.tunnel_canvas.bind('<MouseWheel>', self._on_mousewheel)
+        self.tunnel_canvas.bind('<Button-4>', self._on_mousewheel)  # Linux向上滚动
+        self.tunnel_canvas.bind('<Button-5>', self._on_mousewheel)  # Linux向下滚动
+        self.tunnel_list_frame.bind('<MouseWheel>', self._on_mousewheel)
+        self.tunnel_list_frame.bind('<Button-4>', self._on_mousewheel)
+        self.tunnel_list_frame.bind('<Button-5>', self._on_mousewheel)
+
+        # 存储卡片引用
+        self.tunnel_cards = []
 
         # 按钮区域
-        button_frame = ttk.Frame(left_frame)
-        button_frame.pack(fill=tk.X, padx=5, pady=5)
+        button_frame = tk.Frame(left_card, bg=self.colors['bg_card'])
+        button_frame.pack(fill=tk.X, padx=15, pady=(5, 15))
 
-        ttk.Button(button_frame, text="添加", command=self._add_tunnel).pack(side=tk.LEFT, padx=2)
-        ttk.Button(button_frame, text="编辑", command=self._edit_tunnel).pack(side=tk.LEFT, padx=2)
-        ttk.Button(button_frame, text="删除", command=self._delete_tunnel).pack(side=tk.LEFT, padx=2)
+        # 使用现代化按钮样式
+        add_btn = ttk.Button(button_frame, text="➕ 添加", command=self._add_tunnel, style='Secondary.TButton')
+        add_btn.pack(side=tk.LEFT, padx=(0, 5))
+
+        edit_btn = ttk.Button(button_frame, text="✏️ 编辑", command=self._edit_tunnel, style='Secondary.TButton')
+        edit_btn.pack(side=tk.LEFT, padx=5)
+
+        delete_btn = ttk.Button(button_frame, text="🗑️ 删除", command=self._delete_tunnel, style='Secondary.TButton')
+        delete_btn.pack(side=tk.LEFT, padx=5)
 
         # 右侧面板 - 控制和日志
-        right_frame = ttk.Frame(main_container)
-        main_container.add(right_frame, weight=2)
+        right_panel = tk.Frame(main_container, bg=self.colors['bg_main'])
+        right_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(5, 10), pady=(1, 10))
 
-        # 控制区域
-        control_frame = ttk.LabelFrame(right_frame, text="隧道控制", padding="10")
-        control_frame.pack(fill=tk.X, padx=5, pady=5)
+        # 控制区域卡片
+        control_card = tk.Frame(right_panel, bg=self.colors['bg_card'], relief='flat', bd=0)
+        control_card.pack(fill=tk.X, pady=(0, 10))
+        control_card.configure(highlightbackground=self.colors['border'], highlightthickness=1)
 
-        # 状态显示
-        status_frame = ttk.Frame(control_frame)
-        status_frame.pack(fill=tk.X, pady=5)
+        # 控制区域标题
+        control_header = tk.Frame(control_card, bg=self.colors['bg_card'])
+        control_header.pack(fill=tk.X, padx=20, pady=(15, 10))
 
-        ttk.Label(status_frame, text="当前隧道:").pack(side=tk.LEFT)
-        self.current_tunnel_label = ttk.Label(status_frame, text="未选择", foreground="gray")
+        tk.Label(
+            control_header,
+            text="隧道控制",
+            font=('Microsoft YaHei UI', 11, 'bold'),
+            bg=self.colors['bg_card'],
+            fg=self.colors['text_primary']
+        ).pack(side=tk.LEFT)
+
+        # 状态显示区域
+        status_frame = tk.Frame(control_card, bg=self.colors['bg_card'])
+        status_frame.pack(fill=tk.X, padx=20, pady=(0, 15))
+
+        # 当前隧道信息
+        info_row1 = tk.Frame(status_frame, bg=self.colors['bg_card'])
+        info_row1.pack(fill=tk.X, pady=3)
+
+        tk.Label(
+            info_row1,
+            text="当前隧道:",
+            font=('Microsoft YaHei UI', 9),
+            bg=self.colors['bg_card'],
+            fg=self.colors['text_secondary']
+        ).pack(side=tk.LEFT)
+
+        self.current_tunnel_label = tk.Label(
+            info_row1,
+            text="未选择",
+            font=('Microsoft YaHei UI', 9, 'bold'),
+            bg=self.colors['bg_card'],
+            fg=self.colors['text_secondary']
+        )
         self.current_tunnel_label.pack(side=tk.LEFT, padx=10)
 
-        ttk.Label(status_frame, text="状态:").pack(side=tk.LEFT, padx=(20, 0))
-        self.status_label = ttk.Label(status_frame, text="未运行", foreground="gray")
+        # 运行状态
+        info_row2 = tk.Frame(status_frame, bg=self.colors['bg_card'])
+        info_row2.pack(fill=tk.X, pady=3)
+
+        tk.Label(
+            info_row2,
+            text="运行状态:",
+            font=('Microsoft YaHei UI', 9),
+            bg=self.colors['bg_card'],
+            fg=self.colors['text_secondary']
+        ).pack(side=tk.LEFT)
+
+        self.status_label = tk.Label(
+            info_row2,
+            text="● 未运行",
+            font=('Microsoft YaHei UI', 9, 'bold'),
+            bg=self.colors['bg_card'],
+            fg=self.colors['text_secondary']
+        )
         self.status_label.pack(side=tk.LEFT, padx=10)
 
-        # 控制按钮
-        control_buttons = ttk.Frame(control_frame)
-        control_buttons.pack(fill=tk.X, pady=5)
+        # 控制按钮区域
+        control_buttons = tk.Frame(control_card, bg=self.colors['bg_card'])
+        control_buttons.pack(fill=tk.X, padx=20, pady=(0, 15))
 
         self.start_button = ttk.Button(
             control_buttons,
-            text="启动隧道",
+            text="▶ 启动隧道",
             command=self._start_tunnel,
+            style='Primary.TButton',
             state=tk.DISABLED
         )
-        self.start_button.pack(side=tk.LEFT, padx=5)
+        self.start_button.pack(side=tk.LEFT, padx=(0, 10))
 
         self.stop_button = ttk.Button(
             control_buttons,
-            text="停止隧道",
+            text="⏹ 停止隧道",
             command=self._stop_tunnel,
+            style='Danger.TButton',
             state=tk.DISABLED
         )
-        self.stop_button.pack(side=tk.LEFT, padx=5)
+        self.stop_button.pack(side=tk.LEFT)
 
-        # 日志区域
-        log_frame = ttk.LabelFrame(right_frame, text="运行日志", padding="10")
-        log_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        # 日志区域卡片
+        log_card = tk.Frame(right_panel, bg=self.colors['bg_card'], relief='flat', bd=0)
+        log_card.pack(fill=tk.BOTH, expand=True)
+        log_card.configure(highlightbackground=self.colors['border'], highlightthickness=1)
+
+        # 日志标题栏
+        log_header = tk.Frame(log_card, bg=self.colors['bg_card'])
+        log_header.pack(fill=tk.X, padx=20, pady=(15, 10))
+
+        tk.Label(
+            log_header,
+            text="运行日志",
+            font=('Microsoft YaHei UI', 11, 'bold'),
+            bg=self.colors['bg_card'],
+            fg=self.colors['text_primary']
+        ).pack(side=tk.LEFT)
+
+        # 清空日志按钮
+        clear_log_btn = ttk.Button(
+            log_header,
+            text="🗑️ 清空",
+            command=self._clear_log,
+            style='Secondary.TButton'
+        )
+        clear_log_btn.pack(side=tk.RIGHT)
+
+        # 日志文本区域
+        log_container = tk.Frame(log_card, bg=self.colors['bg_card'])
+        log_container.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 15))
 
         self.log_text = scrolledtext.ScrolledText(
-            log_frame,
+            log_container,
             wrap=tk.WORD,
-            font=("Consolas", 9),
-            state=tk.DISABLED
+            font=('Consolas', 9),
+            bg='#1E1E1E',  # 深色背景，类似代码编辑器
+            fg='#D4D4D4',  # 浅色文字
+            insertbackground='white',
+            relief='flat',
+            bd=0,
+            state=tk.DISABLED,
+            highlightthickness=1,
+            highlightbackground=self.colors['border']
         )
         self.log_text.pack(fill=tk.BOTH, expand=True)
 
-        # 日志按钮
-        log_buttons = ttk.Frame(log_frame)
-        log_buttons.pack(fill=tk.X, pady=(5, 0))
+    def _on_frame_configure(self, event=None):
+        """更新Canvas滚动区域并控制滚动条显示"""
+        self.tunnel_canvas.configure(scrollregion=self.tunnel_canvas.bbox('all'))
 
-        ttk.Button(log_buttons, text="清空日志", command=self._clear_log).pack(side=tk.LEFT)
+        # 使用after确保在布局完成后检查
+        self.root.after(10, self._check_scrollbar_needed)
+
+    def _check_scrollbar_needed(self):
+        """检查是否需要显示滚动条"""
+        try:
+            # 获取内容区域和可见区域的高度
+            bbox = self.tunnel_canvas.bbox('all')
+            canvas_height = self.tunnel_canvas.winfo_height()
+
+            # 如果canvas高度为0或1，说明还没有完成布局，稍后再试
+            if canvas_height <= 1:
+                self.root.after(50, self._check_scrollbar_needed)
+                return
+
+            if bbox and bbox[3] > canvas_height:
+                # 内容超过可见区域，显示滚动条
+                if not self.tunnel_scrollbar.winfo_ismapped():
+                    self.tunnel_scrollbar.pack(side=tk.RIGHT, fill=tk.Y, padx=(5, 0))
+                    # 重新调整canvas宽度
+                    self.tunnel_canvas.pack_forget()
+                    self.tunnel_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            else:
+                # 内容未超过可见区域，隐藏滚动条
+                if self.tunnel_scrollbar.winfo_ismapped():
+                    self.tunnel_scrollbar.pack_forget()
+                    # 重新调整canvas宽度
+                    self.tunnel_canvas.pack_forget()
+                    self.tunnel_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        except:
+            pass
+
+    def _on_canvas_configure(self, event):
+        """调整Canvas内部窗口宽度"""
+        canvas_width = event.width
+        self.tunnel_canvas.itemconfig(self.canvas_frame, width=canvas_width)
+        # 重新检查是否需要滚动条
+        self.root.after(10, self._check_scrollbar_needed)
+
+    def _on_mousewheel(self, event):
+        """处理鼠标滚轮事件"""
+        # 只在滚动条显示时才允许滚动
+        if not self.tunnel_scrollbar.winfo_ismapped():
+            return
+
+        # Windows和MacOS
+        if event.num == 4 or event.delta > 0:
+            self.tunnel_canvas.yview_scroll(-1, "units")
+        elif event.num == 5 or event.delta < 0:
+            self.tunnel_canvas.yview_scroll(1, "units")
+
+    def _create_tunnel_card(self, tunnel, index, is_running):
+        """创建隧道卡片"""
+        # 卡片容器
+        card = tk.Frame(
+            self.tunnel_list_frame,
+            bg=self.colors['bg_card'],
+            relief='flat',
+            bd=0,
+            cursor='hand2'
+        )
+        card.pack(fill=tk.X, pady=(0, 8))
+        card.configure(
+            highlightbackground=self.colors['border'],
+            highlightthickness=1
+        )
+
+        # 内容区域
+        content = tk.Frame(card, bg=self.colors['bg_card'])
+        content.pack(fill=tk.BOTH, padx=12, pady=10)
+
+        # 顶部：自启标签（如果有）
+        label_frame = None
+        auto_start_label = None
+        if tunnel.get('auto_start', False):
+            label_frame = tk.Frame(content, bg='#E0F2FE', bd=0)
+            label_frame.pack(anchor='w', pady=(0, 6))
+            auto_start_label = tk.Label(
+                label_frame,
+                text="自启",
+                font=('Microsoft YaHei UI', 8),
+                bg='#E0F2FE',
+                fg='#0369A1',
+                padx=6,
+                pady=2
+            )
+            auto_start_label.pack()
+
+        # 中间行：隧道名称 + 运行状态
+        name_row = tk.Frame(content, bg=self.colors['bg_card'])
+        name_row.pack(fill=tk.X, pady=(0, 6))
+
+        # 隧道名称（左侧）
+        name_label = tk.Label(
+            name_row,
+            text=tunnel['name'],
+            font=('Microsoft YaHei UI', 11, 'bold'),
+            bg=self.colors['bg_card'],
+            fg=self.colors['text_primary'],
+            anchor='w'
+        )
+        name_label.pack(side=tk.LEFT)
+
+        # 运行状态指示器（右侧）
+        status_indicator = tk.Label(
+            name_row,
+            text="● 运行中" if is_running else "● 未运行",
+            font=('Microsoft YaHei UI', 8),
+            bg=self.colors['bg_card'],
+            fg=self.colors['success'] if is_running else self.colors['text_secondary']
+        )
+        status_indicator.pack(side=tk.RIGHT)
+
+        # 服务器信息
+        info_row = tk.Frame(content, bg=self.colors['bg_card'])
+        info_row.pack(fill=tk.X)
+
+        server_label = tk.Label(
+            info_row,
+            text=f"🌐 {tunnel['server']}",
+            font=('Microsoft YaHei UI', 8),
+            bg=self.colors['bg_card'],
+            fg=self.colors['text_secondary'],
+            anchor='w'
+        )
+        server_label.pack(side=tk.LEFT)
+
+        # 绑定点击事件
+        def on_click(event):
+            self._select_tunnel_card(index)
+
+        # 收集所有需要绑定事件的组件
+        widgets = [card, content, name_row, name_label, info_row, status_indicator, server_label]
+        if label_frame:
+            widgets.extend([label_frame, auto_start_label])
+
+        # 为所有子组件绑定点击事件和滚轮事件
+        for widget in widgets:
+            widget.bind('<Button-1>', on_click)
+            widget.bind('<MouseWheel>', self._on_mousewheel)
+            widget.bind('<Button-4>', self._on_mousewheel)
+            widget.bind('<Button-5>', self._on_mousewheel)
+
+        # 悬停效果
+        def on_enter(event):
+            card.configure(highlightbackground=self.colors['primary'], highlightthickness=2)
+
+        def on_leave(event):
+            if self.current_tunnel_index != index:
+                card.configure(highlightbackground=self.colors['border'], highlightthickness=1)
+
+        card.bind('<Enter>', on_enter)
+        card.bind('<Leave>', on_leave)
+
+        return card
+
+    def _select_tunnel_card(self, index):
+        """选择隧道卡片"""
+        # 取消之前的选中状态
+        if self.current_tunnel_index is not None and self.current_tunnel_index < len(self.tunnel_cards):
+            old_card = self.tunnel_cards[self.current_tunnel_index]
+            old_card.configure(highlightbackground=self.colors['border'], highlightthickness=1)
+
+        # 设置新的选中状态
+        self.current_tunnel_index = index
+        self.last_selected_index = index
+        self._save_last_selection()
+
+        if index < len(self.tunnel_cards):
+            card = self.tunnel_cards[index]
+            card.configure(highlightbackground=self.colors['primary'], highlightthickness=2)
+
+        # 更新隧道信息
+        tunnel = self.config.get(index)
+        if tunnel:
+            self.current_tunnel_label.config(text=tunnel['name'], fg=self.colors['primary'])
+
+            # 检查运行状态
+            is_running = (index in self.tunnel_processes and
+                         self.tunnel_processes[index].is_running())
+
+            if is_running:
+                self.status_label.config(text="● 运行中", fg=self.colors['success'])
+                self.start_button.config(state=tk.DISABLED)
+                self.stop_button.config(state=tk.NORMAL)
+            else:
+                self.status_label.config(text="● 未运行", fg=self.colors['text_secondary'])
+                self.start_button.config(state=tk.NORMAL)
+                self.stop_button.config(state=tk.DISABLED)
+
+            # 显示日志
+            self._display_tunnel_logs()
 
     def _load_tunnels(self):
         """加载隧道列表"""
-        self.tunnel_listbox.delete(0, tk.END)
+        # 清空现有卡片
+        for card in self.tunnel_cards:
+            card.destroy()
+        self.tunnel_cards = []
+
+        # 创建新卡片
         for i, tunnel in enumerate(self.config.get_all()):
-            # 检查隧道是否在运行
             is_running = i in self.tunnel_processes and self.tunnel_processes[i].is_running()
-            status_icon = "●" if is_running else "○"
+            card = self._create_tunnel_card(tunnel, i, is_running)
+            self.tunnel_cards.append(card)
 
-            display_text = f"{status_icon} {tunnel['name']}"
-            if tunnel.get('auto_start', False):
-                display_text += " [自启]"
-            self.tunnel_listbox.insert(tk.END, display_text)
+        # 更新滚动区域
+        self.tunnel_list_frame.update_idletasks()
+        self.tunnel_canvas.configure(scrollregion=self.tunnel_canvas.bbox('all'))
 
-    def _on_tunnel_select(self, event):
-        """隧道选择事件"""
-        selection = self.tunnel_listbox.curselection()
-        if selection:
-            self.current_tunnel_index = selection[0]
-            self.last_selected_index = self.current_tunnel_index  # 记住选择
-            self._save_last_selection()
-
-            tunnel = self.config.get(self.current_tunnel_index)
-            if tunnel:
-                # 更新当前隧道显示
-                self.current_tunnel_label.config(text=tunnel['name'], foreground="blue")
-
-                # 检查当前隧道是否在运行
-                is_running = (self.current_tunnel_index in self.tunnel_processes and
-                             self.tunnel_processes[self.current_tunnel_index].is_running())
-
-                if is_running:
-                    self.status_label.config(text="运行中", foreground="green")
-                    self.start_button.config(state=tk.DISABLED)
-                    self.stop_button.config(state=tk.NORMAL)
-                else:
-                    self.status_label.config(text="未运行", foreground="gray")
-                    self.start_button.config(state=tk.NORMAL)
-                    self.stop_button.config(state=tk.DISABLED)
-
-                # 显示该隧道的日志
-                self._display_tunnel_logs()
-        else:
-            self.current_tunnel_index = None
-            self.current_tunnel_label.config(text="未选择", foreground="gray")
-            self.status_label.config(text="未运行", foreground="gray")
-            self.start_button.config(state=tk.DISABLED)
-            self.stop_button.config(state=tk.DISABLED)
+        # 延迟检查滚动条显示（确保布局完成）
+        self.root.after(100, self._on_frame_configure)
 
     def _display_tunnel_logs(self):
         """显示当前选中隧道的日志"""
@@ -651,17 +1225,8 @@ class NgrokGUI:
                 with open('.last_selection', 'r') as f:
                     index = int(f.read().strip())
                     if 0 <= index < len(self.config.get_all()):
-                        self.tunnel_listbox.selection_clear(0, tk.END)
-                        self.tunnel_listbox.selection_set(index)
-                        self.tunnel_listbox.see(index)
-                        # 触发选择事件
-                        self.current_tunnel_index = index
-                        self.last_selected_index = index
-                        tunnel = self.config.get(index)
-                        if tunnel:
-                            self.current_tunnel_label.config(text=tunnel['name'], foreground="blue")
-                            self._update_tunnel_status()
-                            self._display_tunnel_logs()
+                        # 使用新的卡片选择方法
+                        self._select_tunnel_card(index)
         except:
             pass
 
@@ -674,11 +1239,11 @@ class NgrokGUI:
                      self.tunnel_processes[self.current_tunnel_index].is_running())
 
         if is_running:
-            self.status_label.config(text="运行中", foreground="green")
+            self.status_label.config(text="● 运行中", fg=self.colors['success'])
             self.start_button.config(state=tk.DISABLED)
             self.stop_button.config(state=tk.NORMAL)
         else:
-            self.status_label.config(text="未运行", foreground="gray")
+            self.status_label.config(text="● 未运行", fg=self.colors['text_secondary'])
             self.start_button.config(state=tk.NORMAL)
             self.stop_button.config(state=tk.DISABLED)
 
@@ -798,7 +1363,7 @@ class NgrokGUI:
         )
 
         if success:
-            self.status_label.config(text="运行中", foreground="green")
+            self.status_label.config(text="● 运行中", fg=self.colors['success'])
             self.start_button.config(state=tk.DISABLED)
             self.stop_button.config(state=tk.NORMAL)
             self._log_to_tunnel(self.current_tunnel_index, message)
@@ -806,7 +1371,7 @@ class NgrokGUI:
             # 恢复选中状态
             self._restore_selection_after_reload()
         else:
-            self.status_label.config(text="启动失败", foreground="red")
+            self.status_label.config(text="● 启动失败", fg=self.colors['danger'])
             self._log_to_tunnel(self.current_tunnel_index, f"错误: {message}")
             messagebox.showerror("错误", message)
 
@@ -825,7 +1390,7 @@ class NgrokGUI:
         self._log_to_tunnel(self.current_tunnel_index, "正在停止隧道...")
         success, message = process.stop()
 
-        self.status_label.config(text="未运行", foreground="gray")
+        self.status_label.config(text="● 未运行", fg=self.colors['text_secondary'])
         self.start_button.config(state=tk.NORMAL)
         self.stop_button.config(state=tk.DISABLED)
         self._log_to_tunnel(self.current_tunnel_index, message)
@@ -835,13 +1400,10 @@ class NgrokGUI:
 
     def _restore_selection_after_reload(self):
         """在重新加载列表后恢复选中状态"""
-        if self.current_tunnel_index is not None:
-            # 恢复选中
-            self.tunnel_listbox.selection_clear(0, tk.END)
-            self.tunnel_listbox.selection_set(self.current_tunnel_index)
-            self.tunnel_listbox.see(self.current_tunnel_index)
-            # 确保焦点在列表上
-            self.tunnel_listbox.focus_set()
+        if self.current_tunnel_index is not None and self.current_tunnel_index < len(self.tunnel_cards):
+            # 重新选择当前卡片
+            card = self.tunnel_cards[self.current_tunnel_index]
+            card.configure(highlightbackground=self.colors['primary'], highlightthickness=2)
 
     def _on_tunnel_log(self, tunnel_name, message):
         """处理隧道日志回调"""
@@ -885,9 +1447,8 @@ class NgrokGUI:
         """自动启动标记为自启的隧道"""
         for i, tunnel in enumerate(self.config.get_all()):
             if tunnel.get('auto_start', False):
-                self.current_tunnel_index = i
-                self.tunnel_listbox.selection_clear(0, tk.END)
-                self.tunnel_listbox.selection_set(i)
+                # 选择隧道卡片
+                self._select_tunnel_card(i)
                 self._log_to_tunnel(i, f"自动启动隧道: {tunnel['name']}")
                 self._start_tunnel()
 
@@ -957,9 +1518,9 @@ class NgrokGUI:
 
         # 根据当前状态添加菜单项
         if self._check_startup_enabled():
-            self.settings_menu.insert_command(0, label="✓ 开机自启动", command=self._toggle_startup)
+            self.settings_menu.insert_command(0, label="   ✅ 开机自启动", command=self._toggle_startup)
         else:
-            self.settings_menu.insert_command(0, label="开机自启动", command=self._toggle_startup)
+            self.settings_menu.insert_command(0, label="   ⬜ 开机自启动", command=self._toggle_startup)
 
     def _minimize_to_tray(self):
         """最小化到系统托盘"""
@@ -1007,10 +1568,11 @@ class NgrokGUI:
         # 创建设置对话框
         dialog = tk.Toplevel(self.root)
         dialog.title("关闭按钮行为设置")
-        dialog.geometry("350x230")
+        dialog.geometry("400x340")
         dialog.resizable(False, False)
         dialog.transient(self.root)
         dialog.grab_set()
+        dialog.configure(bg=self.colors['bg_main'])
 
         # 居中显示
         dialog.update_idletasks()
@@ -1018,12 +1580,23 @@ class NgrokGUI:
         y = (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
         dialog.geometry(f"+{x}+{y}")
 
+        # 主卡片
+        card = tk.Frame(dialog, bg=self.colors['bg_card'], relief='flat', bd=0)
+        card.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        card.configure(highlightbackground=self.colors['border'], highlightthickness=1)
+
+        # 内容区域
+        content = tk.Frame(card, bg=self.colors['bg_card'])
+        content.pack(fill=tk.BOTH, expand=True, padx=25, pady=25)
+
         # 提示文本
-        ttk.Label(
-            dialog,
+        tk.Label(
+            content,
             text="点击窗口关闭按钮时：",
-            font=("", 10, "bold")
-        ).pack(pady=10)
+            font=('Microsoft YaHei UI', 11, 'bold'),
+            bg=self.colors['bg_card'],
+            fg=self.colors['text_primary']
+        ).pack(anchor='w', pady=(0, 20))
 
         # 获取当前设置
         current_behavior = self.settings.get("close_behavior")
@@ -1031,34 +1604,36 @@ class NgrokGUI:
         # 单选按钮变量
         behavior_var = tk.StringVar(value=current_behavior if current_behavior else "ask")
 
-        # 单选按钮框架
-        radio_frame = ttk.Frame(dialog)
-        radio_frame.pack(pady=5)
+        # 单选按钮区域
+        radio_frame = tk.Frame(content, bg=self.colors['bg_card'])
+        radio_frame.pack(fill=tk.X, pady=5)
 
-        ttk.Radiobutton(
-            radio_frame,
-            text="每次询问",
-            variable=behavior_var,
-            value="ask"
-        ).pack(anchor=tk.W, pady=5, padx=20)
+        # 创建现代化单选按钮
+        options = [
+            ("ask", "每次询问"),
+            ("minimize", "最小化到托盘"),
+            ("exit", "直接退出程序")
+        ]
 
-        ttk.Radiobutton(
-            radio_frame,
-            text="最小化到托盘",
-            variable=behavior_var,
-            value="minimize"
-        ).pack(anchor=tk.W, pady=5, padx=20)
-
-        ttk.Radiobutton(
-            radio_frame,
-            text="直接退出程序",
-            variable=behavior_var,
-            value="exit"
-        ).pack(anchor=tk.W, pady=5, padx=20)
+        for value, text in options:
+            rb = tk.Radiobutton(
+                radio_frame,
+                text=text,
+                variable=behavior_var,
+                value=value,
+                font=('Microsoft YaHei UI', 10),
+                bg=self.colors['bg_card'],
+                fg=self.colors['text_primary'],
+                activebackground=self.colors['bg_card'],
+                selectcolor=self.colors['bg_card'],
+                highlightthickness=0,
+                bd=0
+            )
+            rb.pack(anchor=tk.W, pady=8, padx=10)
 
         # 按钮框架
-        button_frame = ttk.Frame(dialog)
-        button_frame.pack(pady=20)
+        button_frame = tk.Frame(content, bg=self.colors['bg_card'])
+        button_frame.pack(pady=(20, 0))
 
         def on_save():
             selected = behavior_var.get()
@@ -1072,8 +1647,11 @@ class NgrokGUI:
         def on_cancel():
             dialog.destroy()
 
-        ttk.Button(button_frame, text="保存", command=on_save, width=10).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="取消", command=on_cancel, width=10).pack(side=tk.LEFT, padx=5)
+        # 应用样式
+        style = ttk.Style()
+
+        ttk.Button(button_frame, text="保存", command=on_save, style='Primary.TButton').pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(button_frame, text="取消", command=on_cancel, style='Secondary.TButton').pack(side=tk.LEFT)
 
     def _show_about(self):
         """显示关于对话框"""
@@ -1157,10 +1735,11 @@ class NgrokGUI:
             # 创建自定义对话框
             dialog = tk.Toplevel(self.root)
             dialog.title("关闭选项")
-            dialog.geometry("380x180")
+            dialog.geometry("420x230")
             dialog.resizable(False, False)
             dialog.transient(self.root)
             dialog.grab_set()
+            dialog.configure(bg=self.colors['bg_main'])
 
             # 居中显示
             dialog.update_idletasks()
@@ -1170,24 +1749,42 @@ class NgrokGUI:
 
             result = {'action': None}
 
+            # 主卡片
+            card = tk.Frame(dialog, bg=self.colors['bg_card'], relief='flat', bd=0)
+            card.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+            card.configure(highlightbackground=self.colors['border'], highlightthickness=1)
+
+            # 内容区域
+            content = tk.Frame(card, bg=self.colors['bg_card'])
+            content.pack(fill=tk.BOTH, expand=True, padx=22, pady=18)
+
             # 提示文本
-            ttk.Label(
-                dialog,
+            tk.Label(
+                content,
                 text="请选择关闭方式：",
-                font=("", 10)
-            ).pack(pady=15)
+                font=('Microsoft YaHei UI', 11, 'bold'),
+                bg=self.colors['bg_card'],
+                fg=self.colors['text_primary']
+            ).pack(anchor='w', pady=(0, 10))
 
             # 记住选择的复选框
             remember_var = tk.BooleanVar(value=True)
-            ttk.Checkbutton(
-                dialog,
+            tk.Checkbutton(
+                content,
                 text="记住我的选择（可在设置中修改）",
-                variable=remember_var
-            ).pack(pady=5)
+                variable=remember_var,
+                font=('Microsoft YaHei UI', 9),
+                bg=self.colors['bg_card'],
+                fg=self.colors['text_secondary'],
+                activebackground=self.colors['bg_card'],
+                selectcolor=self.colors['bg_card'],
+                highlightthickness=0,
+                bd=0
+            ).pack(anchor='w', pady=(0, 16))
 
             # 按钮框架
-            button_frame = ttk.Frame(dialog)
-            button_frame.pack(pady=10)
+            button_frame = tk.Frame(content, bg=self.colors['bg_card'])
+            button_frame.pack()
 
             def on_minimize():
                 result['action'] = 'minimize'
@@ -1207,22 +1804,22 @@ class NgrokGUI:
                 button_frame,
                 text="最小化到托盘",
                 command=on_minimize,
-                width=15
-            ).pack(side=tk.LEFT, padx=5)
+                style='Primary.TButton'
+            ).pack(side=tk.LEFT, padx=6)
 
             ttk.Button(
                 button_frame,
                 text="退出程序",
                 command=on_exit,
-                width=15
-            ).pack(side=tk.LEFT, padx=5)
+                style='Secondary.TButton'
+            ).pack(side=tk.LEFT, padx=6)
 
             ttk.Button(
                 button_frame,
                 text="取消",
                 command=on_cancel,
-                width=10
-            ).pack(side=tk.LEFT, padx=5)
+                style='Secondary.TButton'
+            ).pack(side=tk.LEFT, padx=6)
 
             # 等待对话框关闭
             self.root.wait_window(dialog)
