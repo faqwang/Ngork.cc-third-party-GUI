@@ -964,7 +964,7 @@ class NgrokGUI:
 
         self.start_button = ttk.Button(
             control_buttons,
-            text="\u542f\u52a8\u9690\u9053",
+            text="启动隧道",
             command=self._start_tunnel,
             style='Primary.TButton',
             state=tk.DISABLED
@@ -973,7 +973,7 @@ class NgrokGUI:
 
         self.stop_button = ttk.Button(
             control_buttons,
-            text="\u505c\u6b62\u9690\u9053",
+            text="停止隧道",
             command=self._stop_tunnel,
             style='Danger.TButton',
             state=tk.DISABLED
