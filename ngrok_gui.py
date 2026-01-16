@@ -299,12 +299,12 @@ class TunnelDialog(tk.Toplevel):
 
         # 现代化配色
         self.colors = {
-            'bg': '#F5F7FA',
+            'bg': '#F7F9FC',
             'card': '#FFFFFF',
-            'primary': '#0078D4',
-            'text_primary': '#1F2937',
-            'text_secondary': '#6B7280',
-            'border': '#E5E7EB'
+            'primary': '#2563EB',
+            'text_primary': '#0F172A',
+            'text_secondary': '#64748B',
+            'border': '#E2E8F0'
         }
 
         self.configure(bg=self.colors['bg'])
@@ -422,7 +422,7 @@ class TunnelDialog(tk.Toplevel):
         self.auto_start_var = tk.BooleanVar()
         auto_start_check = tk.Checkbutton(
             content,
-            text="开机自动启动此隧道",
+            text="自动启动此隧道",
             variable=self.auto_start_var,
             font=('Microsoft YaHei UI', 9),
             bg=self.colors['card'],
@@ -503,24 +503,30 @@ class NgrokGUI:
 
         # 现代化配色方案
         self.colors = {
-            'primary': '#0078D4',      # 主色调 - 蓝色
-            'primary_dark': '#005A9E',  # 深蓝色
-            'primary_light': '#E3F2FD', # 浅蓝色背景
-            'success': '#10B981',       # 成功 - 绿色
-            'danger': '#EF4444',        # 危险 - 红色
-            'warning': '#F59E0B',       # 警告 - 橙色
-            'bg_main': '#F5F7FA',       # 主背景
-            'bg_card': '#FFFFFF',       # 卡片背景
-            'bg_header': '#E8EEF4',     # 头部背景
-            'text_primary': '#1F2937',  # 主文本
-            'text_secondary': '#6B7280',# 次要文本
-            'border': '#E5E7EB',        # 边框
-            'hover': '#F3F4F6'          # 悬停
+            'primary': '#2563EB',       # ��ɫ�� - �ִ���ɫ
+            'primary_dark': '#1D4ED8',  # ����ɫ
+            'primary_light': '#DBEAFE', # ǳ��ɫ����
+            'accent': '#FF7A00',        # ǿ����ɫ
+            'accent_dark': '#E66A00',   # ǿ������ɫ
+            'accent_light': '#FFF1E6',  # ǿ������ɫ����
+            'success': '#10B981',       # �ɹ� - ��ɫ
+            'success_bg': '#E8F7EF',    # �ɹ� - ����
+            'danger': '#EF4444',        # Σ�� - ��ɫ
+            'warning': '#F59E0B',       # ���� - ��ɫ
+            'neutral_bg': '#F1F5F9',    # �м�״̬����
+            'bg_main': '#F7F9FC',       # ������
+            'bg_card': '#FFFFFF',       # ��Ƭ����
+            'bg_header': '#F1F5F9',     # ͷ������
+            'card_hover': '#F6F8FB',    # ��Ƭ��ͣ
+            'card_selected': '#F1F7FF', # ��Ƭѡ��
+            'text_primary': '#0F172A',  # ���ı�
+            'text_secondary': '#64748B',# ��Ҫ�ı�
+            'border': '#E2E8F0',        # �߿�
+            'hover': '#F1F5F9'          # ��ͣ
         }
-        # 菜单字体设置 - 适当提高菜单栏高度
         self.menu_font = ('Microsoft YaHei UI', 10)
         self.menu_item_font = ('Microsoft YaHei UI', 9)
-        self.toolbar_height = 25
+        self.toolbar_height = 56
 
         # 配置和进程管理
         self.config = TunnelConfig()
@@ -614,6 +620,20 @@ class NgrokGUI:
         style.map('Secondary.TButton',
                  background=[('active', self.colors['hover'])])
 
+        # ���� Button ��ʽ - ǿ����ť
+        style.configure('Accent.TButton',
+                       background=self.colors['accent'],
+                       foreground='white',
+                       borderwidth=0,
+                       focuscolor='none',
+                       font=('Microsoft YaHei UI', 9, 'bold'),
+                       padding=(16, 8))
+        style.map('Accent.TButton',
+                 background=[('active', self.colors['accent_dark']),
+                           ('pressed', self.colors['accent_dark']),
+                           ('disabled', '#E5E7EB')],
+                 foreground=[('disabled', 'black')])
+
         # 配置 Button 样式 - 危险按钮
         style.configure('Danger.TButton',
                        background=self.colors['danger'],
@@ -683,9 +703,9 @@ class NgrokGUI:
                                     font=self.menu_item_font)
         self._update_startup_menu()
         if TRAY_AVAILABLE:
-            self.settings_menu.add_command(label="   📌 最小化到托盘", command=self._minimize_to_tray)
+            self.settings_menu.add_command(label="   最小化到托盘", command=self._minimize_to_tray)
             self.settings_menu.add_separator()
-            self.settings_menu.add_command(label="   🔧 关闭按钮行为设置", command=self._change_close_behavior)
+            self.settings_menu.add_command(label="   关闭按钮行为", command=self._change_close_behavior)
 
         # 帮助菜单
         self.help_menu = tk.Menu(self.root,
@@ -697,7 +717,7 @@ class NgrokGUI:
                                relief='flat',
                                borderwidth=1,
                                font=self.menu_item_font)
-        self.help_menu.add_command(label="   ℹ️ 关于", command=self._show_about)
+        self.help_menu.add_command(label="   关于", command=self._show_about)
 
     def _popup_menu(self, menu, widget):
         """在按钮下方弹出菜单"""
@@ -718,32 +738,41 @@ class NgrokGUI:
 
     def _create_widgets(self):
         """创建主界面控件"""
-        # 顶部工具栏（自定义高度）
-        toolbar = tk.Frame(self.root, bg=self.colors['bg_card'], height=self.toolbar_height)
-        toolbar.pack(fill=tk.X)
-        toolbar.pack_propagate(False)
-        toolbar.configure(highlightbackground=self.colors['border'], highlightthickness=1)
+        # Top app bar
+        app_bar = tk.Frame(self.root, bg=self.colors['bg_card'], height=self.toolbar_height)
+        app_bar.pack(fill=tk.X)
+        app_bar.pack_propagate(False)
+        app_bar.configure(highlightbackground=self.colors['border'], highlightthickness=1)
 
-        self.settings_button = tk.Menubutton(
-            toolbar,
-            text="⚙️ 设置",
+        brand_frame = tk.Frame(app_bar, bg=self.colors['bg_card'])
+        brand_frame.pack(side=tk.LEFT, padx=16)
+
+        brand_dot = tk.Canvas(brand_frame, width=12, height=12, bg=self.colors['bg_card'], highlightthickness=0)
+        brand_dot.create_oval(0, 0, 12, 12, fill=self.colors['accent'], outline=self.colors['accent'])
+        brand_dot.pack(side=tk.LEFT, padx=(0, 8))
+
+        tk.Label(
+            brand_frame,
+            text="Sunny-Ngrok",
+            font=('Microsoft YaHei UI', 13, 'bold'),
             bg=self.colors['bg_card'],
-            fg=self.colors['text_primary'],
-            activebackground=self.colors['primary_light'],
-            activeforeground=self.colors['primary'],
-            relief='flat',
-            borderwidth=0,
-            font=self.menu_font,
-            padx=8,
-            pady=0
-        )
-        self.settings_button.pack(side=tk.LEFT, padx=(8, 4), pady=2)
-        self.settings_button.configure(menu=self.settings_menu)
-        self.settings_button.bind("<Button-1>", self._show_settings_menu)
+            fg=self.colors['text_primary']
+        ).pack(side=tk.LEFT)
+
+        tk.Label(
+            brand_frame,
+            text="GUI",
+            font=('Microsoft YaHei UI', 9),
+            bg=self.colors['bg_card'],
+            fg=self.colors['text_secondary']
+        ).pack(side=tk.LEFT, padx=(6, 0))
+
+        actions = tk.Frame(app_bar, bg=self.colors['bg_card'])
+        actions.pack(side=tk.LEFT, padx=(6, 12))
 
         self.help_button = tk.Menubutton(
-            toolbar,
-            text="❓ 帮助",
+            actions,
+            text="帮助",
             bg=self.colors['bg_card'],
             fg=self.colors['text_primary'],
             activebackground=self.colors['primary_light'],
@@ -752,13 +781,30 @@ class NgrokGUI:
             borderwidth=0,
             font=self.menu_font,
             padx=8,
-            pady=0
+            pady=2
         )
-        self.help_button.pack(side=tk.LEFT, padx=(4, 8), pady=2)
+        self.help_button.pack(side=tk.RIGHT, padx=(8, 0))
         self.help_button.configure(menu=self.help_menu)
         self.help_button.bind("<Button-1>", self._show_help_menu)
 
-        # 主容器 - 使用现代化背景
+        self.settings_button = tk.Menubutton(
+            actions,
+            text="设置",
+            bg=self.colors['bg_card'],
+            fg=self.colors['text_primary'],
+            activebackground=self.colors['primary_light'],
+            activeforeground=self.colors['primary'],
+            relief='flat',
+            borderwidth=0,
+            font=self.menu_font,
+            padx=8,
+            pady=2
+        )
+        self.settings_button.pack(side=tk.RIGHT, padx=(8, 0))
+        self.settings_button.configure(menu=self.settings_menu)
+        self.settings_button.bind("<Button-1>", self._show_settings_menu)
+
+
         main_container = tk.Frame(self.root, bg=self.colors['bg_main'])
         main_container.pack(fill=tk.BOTH, expand=True)
 
@@ -836,13 +882,13 @@ class NgrokGUI:
         button_frame.pack(fill=tk.X, padx=15, pady=(5, 15))
 
         # 使用现代化按钮样式
-        add_btn = ttk.Button(button_frame, text="➕ 添加", command=self._add_tunnel, style='Secondary.TButton')
+        add_btn = ttk.Button(button_frame, text="新增", command=self._add_tunnel, style='Secondary.TButton')
         add_btn.pack(side=tk.LEFT, padx=(0, 5))
 
-        edit_btn = ttk.Button(button_frame, text="✏️ 编辑", command=self._edit_tunnel, style='Secondary.TButton')
+        edit_btn = ttk.Button(button_frame, text="编辑", command=self._edit_tunnel, style='Secondary.TButton')
         edit_btn.pack(side=tk.LEFT, padx=5)
 
-        delete_btn = ttk.Button(button_frame, text="🗑️ 删除", command=self._delete_tunnel, style='Secondary.TButton')
+        delete_btn = ttk.Button(button_frame, text="删除", command=self._delete_tunnel, style='Secondary.TButton')
         delete_btn.pack(side=tk.LEFT, padx=5)
 
         # 右侧面板 - 控制和日志
@@ -884,7 +930,7 @@ class NgrokGUI:
 
         self.current_tunnel_label = tk.Label(
             info_row1,
-            text="未选择",
+            text="\u672a\u9009\u62e9",
             font=('Microsoft YaHei UI', 9, 'bold'),
             bg=self.colors['bg_card'],
             fg=self.colors['text_secondary']
@@ -905,7 +951,7 @@ class NgrokGUI:
 
         self.status_label = tk.Label(
             info_row2,
-            text="● 未运行",
+            text="\u672a\u8fd0\u884c",
             font=('Microsoft YaHei UI', 9, 'bold'),
             bg=self.colors['bg_card'],
             fg=self.colors['text_secondary']
@@ -918,7 +964,7 @@ class NgrokGUI:
 
         self.start_button = ttk.Button(
             control_buttons,
-            text="▶ 启动隧道",
+            text="\u542f\u52a8\u9690\u9053",
             command=self._start_tunnel,
             style='Primary.TButton',
             state=tk.DISABLED
@@ -927,12 +973,13 @@ class NgrokGUI:
 
         self.stop_button = ttk.Button(
             control_buttons,
-            text="⏹ 停止隧道",
+            text="\u505c\u6b62\u9690\u9053",
             command=self._stop_tunnel,
             style='Danger.TButton',
             state=tk.DISABLED
         )
         self.stop_button.pack(side=tk.LEFT)
+        self._sync_control_cursors()
 
         # 日志区域卡片
         log_card = tk.Frame(right_panel, bg=self.colors['bg_card'], relief='flat', bd=0)
@@ -954,7 +1001,7 @@ class NgrokGUI:
         # 清空日志按钮
         clear_log_btn = ttk.Button(
             log_header,
-            text="🗑️ 清空",
+            text="\u6e05\u7a7a",
             command=self._clear_log,
             style='Secondary.TButton'
         )
@@ -1034,9 +1081,44 @@ class NgrokGUI:
         elif event.num == 5 or event.delta < 0:
             self.tunnel_canvas.yview_scroll(1, "units")
 
+    def _set_card_selected(self, card, selected):
+        bg = self.colors['card_selected'] if selected else self.colors['bg_card']
+        border = self.colors['primary'] if selected else self.colors['border']
+        thickness = 2 if selected else 1
+
+        card.configure(bg=bg, highlightbackground=border, highlightthickness=thickness)
+        for widget in getattr(card, 'bg_widgets', []):
+            try:
+                widget.configure(bg=bg)
+            except tk.TclError:
+                pass
+
+        if getattr(card, 'name_label', None):
+            card.name_label.configure(
+                fg=self.colors['primary'] if selected else self.colors['text_primary']
+            )
+
+    def _set_card_hover(self, card, hovering):
+        if self.current_tunnel_index == getattr(card, 'index', None):
+            return
+
+        bg = self.colors['card_hover'] if hovering else self.colors['bg_card']
+        border = self.colors['primary'] if hovering else self.colors['border']
+        card.configure(bg=bg, highlightbackground=border, highlightthickness=1)
+        for widget in getattr(card, 'bg_widgets', []):
+            try:
+                widget.configure(bg=bg)
+            except tk.TclError:
+                pass
+
+    def _set_button_cursor(self, button, enabled):
+        button.configure(cursor='hand2' if enabled else 'no')
+
+    def _sync_control_cursors(self):
+        self._set_button_cursor(self.start_button, self.start_button.instate(['!disabled']))
+        self._set_button_cursor(self.stop_button, self.stop_button.instate(['!disabled']))
+
     def _create_tunnel_card(self, tunnel, index, is_running):
-        """创建隧道卡片"""
-        # 卡片容器
         card = tk.Frame(
             self.tunnel_list_frame,
             bg=self.colors['bg_card'],
@@ -1049,33 +1131,28 @@ class NgrokGUI:
             highlightbackground=self.colors['border'],
             highlightthickness=1
         )
+        card.index = index
 
-        # 内容区域
         content = tk.Frame(card, bg=self.colors['bg_card'])
         content.pack(fill=tk.BOTH, padx=12, pady=10)
 
-        # 顶部：自启标签（如果有）
-        label_frame = None
-        auto_start_label = None
-        if tunnel.get('auto_start', False):
-            label_frame = tk.Frame(content, bg='#E0F2FE', bd=0)
-            label_frame.pack(anchor='w', pady=(0, 6))
-            auto_start_label = tk.Label(
-                label_frame,
-                text="自启",
-                font=('Microsoft YaHei UI', 8),
-                bg='#E0F2FE',
-                fg='#0369A1',
-                padx=6,
-                pady=2
-            )
-            auto_start_label.pack()
-
-        # 中间行：隧道名称 + 运行状态
         name_row = tk.Frame(content, bg=self.colors['bg_card'])
         name_row.pack(fill=tk.X, pady=(0, 6))
 
-        # 隧道名称（左侧）
+        initial = (tunnel.get('name') or '').strip()[:1]
+        if not initial:
+            initial = str(index + 1)
+        avatar = tk.Label(
+            name_row,
+            text=initial.upper(),
+            font=('Microsoft YaHei UI', 9, 'bold'),
+            bg=self.colors['accent_light'],
+            fg=self.colors['accent'],
+            padx=6,
+            pady=2
+        )
+        avatar.pack(side=tk.LEFT, padx=(0, 8))
+
         name_label = tk.Label(
             name_row,
             text=tunnel['name'],
@@ -1086,94 +1163,100 @@ class NgrokGUI:
         )
         name_label.pack(side=tk.LEFT)
 
-        # 运行状态指示器（右侧）
+        status_bg = self.colors['success_bg'] if is_running else self.colors['neutral_bg']
+        status_fg = self.colors['success'] if is_running else self.colors['text_secondary']
+        status_text = "运行中" if is_running else "未运行"
         status_indicator = tk.Label(
             name_row,
-            text="● 运行中" if is_running else "● 未运行",
+            text=status_text,
             font=('Microsoft YaHei UI', 8),
-            bg=self.colors['bg_card'],
-            fg=self.colors['success'] if is_running else self.colors['text_secondary']
+            bg=status_bg,
+            fg=status_fg,
+            padx=8,
+            pady=2
         )
         status_indicator.pack(side=tk.RIGHT)
 
-        # 服务器信息
         info_row = tk.Frame(content, bg=self.colors['bg_card'])
         info_row.pack(fill=tk.X)
 
+        auto_start_enabled = tunnel.get('auto_start', False)
+        auto_start_icon = tk.Label(
+            info_row,
+            text="⟳",
+            font=('Microsoft YaHei UI', 9, 'bold'),
+            bg=self.colors['bg_card'],
+            fg=self.colors['success'] if auto_start_enabled else '#94A3B8',
+            padx=4,
+            pady=0
+        )
+        auto_start_icon.pack(side=tk.LEFT)
+
         server_label = tk.Label(
             info_row,
-            text=f"🌐 {tunnel['server']}",
+            text=tunnel['server'],
             font=('Microsoft YaHei UI', 8),
             bg=self.colors['bg_card'],
-            fg=self.colors['text_secondary'],
+            fg=self.colors['primary'],
             anchor='w'
         )
-        server_label.pack(side=tk.LEFT)
+        server_label.pack(side=tk.LEFT, padx=(2, 0))
 
-        # 绑定点击事件
         def on_click(event):
             self._select_tunnel_card(index)
 
-        # 收集所有需要绑定事件的组件
-        widgets = [card, content, name_row, name_label, info_row, status_indicator, server_label]
-        if label_frame:
-            widgets.extend([label_frame, auto_start_label])
+        widgets = [card, content, name_row, name_label, info_row, status_indicator, server_label, avatar, auto_start_icon]
 
-        # 为所有子组件绑定点击事件和滚轮事件
         for widget in widgets:
             widget.bind('<Button-1>', on_click)
             widget.bind('<MouseWheel>', self._on_mousewheel)
             widget.bind('<Button-4>', self._on_mousewheel)
             widget.bind('<Button-5>', self._on_mousewheel)
 
-        # 悬停效果
         def on_enter(event):
-            card.configure(highlightbackground=self.colors['primary'], highlightthickness=2)
+            self._set_card_hover(card, True)
 
         def on_leave(event):
-            if self.current_tunnel_index != index:
-                card.configure(highlightbackground=self.colors['border'], highlightthickness=1)
+            self._set_card_hover(card, False)
 
         card.bind('<Enter>', on_enter)
         card.bind('<Leave>', on_leave)
 
+        card.bg_widgets = [content, name_row, info_row, name_label, server_label, auto_start_icon]
+        card.name_label = name_label
+
         return card
 
     def _select_tunnel_card(self, index):
-        """选择隧道卡片"""
-        # 取消之前的选中状态
         if self.current_tunnel_index is not None and self.current_tunnel_index < len(self.tunnel_cards):
             old_card = self.tunnel_cards[self.current_tunnel_index]
-            old_card.configure(highlightbackground=self.colors['border'], highlightthickness=1)
+            self._set_card_selected(old_card, False)
 
-        # 设置新的选中状态
         self.current_tunnel_index = index
         self.last_selected_index = index
         self._save_last_selection()
 
         if index < len(self.tunnel_cards):
             card = self.tunnel_cards[index]
-            card.configure(highlightbackground=self.colors['primary'], highlightthickness=2)
+            self._set_card_selected(card, True)
 
-        # 更新隧道信息
         tunnel = self.config.get(index)
         if tunnel:
             self.current_tunnel_label.config(text=tunnel['name'], fg=self.colors['primary'])
 
-            # 检查运行状态
             is_running = (index in self.tunnel_processes and
                          self.tunnel_processes[index].is_running())
 
             if is_running:
-                self.status_label.config(text="● 运行中", fg=self.colors['success'])
+                self.status_label.config(text="运行中", fg=self.colors['success'])
                 self.start_button.config(state=tk.DISABLED)
                 self.stop_button.config(state=tk.NORMAL)
             else:
-                self.status_label.config(text="● 未运行", fg=self.colors['text_secondary'])
+                self.status_label.config(text="未运行", fg=self.colors['text_secondary'])
                 self.start_button.config(state=tk.NORMAL)
                 self.stop_button.config(state=tk.DISABLED)
 
-            # 显示日志
+            self._sync_control_cursors()
             self._display_tunnel_logs()
 
     def _load_tunnels(self):
@@ -1211,7 +1294,6 @@ class NgrokGUI:
         self.log_text.config(state=tk.DISABLED)
 
     def _save_last_selection(self):
-        """保存最后选择的隧道索引"""
         try:
             with open('.last_selection', 'w') as f:
                 f.write(str(self.last_selected_index))
@@ -1219,19 +1301,16 @@ class NgrokGUI:
             pass
 
     def _restore_last_selection(self):
-        """恢复最后选择的隧道"""
         try:
             if os.path.exists('.last_selection'):
                 with open('.last_selection', 'r') as f:
                     index = int(f.read().strip())
                     if 0 <= index < len(self.config.get_all()):
-                        # 使用新的卡片选择方法
                         self._select_tunnel_card(index)
         except:
             pass
 
     def _update_tunnel_status(self):
-        """更新当前隧道的状态显示"""
         if self.current_tunnel_index is None:
             return
 
@@ -1239,17 +1318,17 @@ class NgrokGUI:
                      self.tunnel_processes[self.current_tunnel_index].is_running())
 
         if is_running:
-            self.status_label.config(text="● 运行中", fg=self.colors['success'])
+            self.status_label.config(text="运行中", fg=self.colors['success'])
             self.start_button.config(state=tk.DISABLED)
             self.stop_button.config(state=tk.NORMAL)
         else:
-            self.status_label.config(text="● 未运行", fg=self.colors['text_secondary'])
+            self.status_label.config(text="未运行", fg=self.colors['text_secondary'])
             self.start_button.config(state=tk.NORMAL)
             self.stop_button.config(state=tk.DISABLED)
+        self._sync_control_cursors()
 
     def _add_tunnel(self):
-        """添加隧道"""
-        dialog = TunnelDialog(self.root, "添加隧道")
+        dialog = TunnelDialog(self.root, "新增隐道")
         self.root.wait_window(dialog)
 
         if dialog.result:
@@ -1260,7 +1339,8 @@ class NgrokGUI:
                 dialog.result['auto_start']
             )
             self._load_tunnels()
-            self._log_system("添加隧道: " + dialog.result['name'])
+            self._log_system("新增隐道: " + dialog.result['name'])
+
 
     def _edit_tunnel(self):
         """编辑隧道"""
@@ -1331,28 +1411,26 @@ class NgrokGUI:
             self._load_tunnels()
             self.current_tunnel_index = None
             self.start_button.config(state=tk.DISABLED)
+            self._sync_control_cursors()
             self._log_system("删除隧道: " + tunnel['name'])
 
     def _start_tunnel(self):
-        """启动隧道"""
         if self.current_tunnel_index is None:
             return
 
-        # 检查当前隧道是否已在运行
         if (self.current_tunnel_index in self.tunnel_processes and
             self.tunnel_processes[self.current_tunnel_index].is_running()):
-            messagebox.showwarning("警告", "该隧道已在运行中")
+            messagebox.showwarning("提示", "隐道已经在运行")
             return
 
         tunnel = self.config.get(self.current_tunnel_index)
         if not tunnel:
             return
 
-        # 创建新的进程管理器
         process = TunnelProcess(tunnel['name'])
         self.tunnel_processes[self.current_tunnel_index] = process
 
-        self._log_to_tunnel(self.current_tunnel_index, f"正在启动隧道: {tunnel['name']}")
+        self._log_to_tunnel(self.current_tunnel_index, f"开始启动隐道: {tunnel['name']}")
         self._log_to_tunnel(self.current_tunnel_index, f"服务器: {tunnel['server']}")
         self._log_to_tunnel(self.current_tunnel_index, f"密钥: {tunnel['key']}")
 
@@ -1363,20 +1441,20 @@ class NgrokGUI:
         )
 
         if success:
-            self.status_label.config(text="● 运行中", fg=self.colors['success'])
+            self.status_label.config(text="运行中", fg=self.colors['success'])
             self.start_button.config(state=tk.DISABLED)
             self.stop_button.config(state=tk.NORMAL)
             self._log_to_tunnel(self.current_tunnel_index, message)
-            self._load_tunnels()  # 刷新列表显示运行状态
-            # 恢复选中状态
+            self._load_tunnels()
             self._restore_selection_after_reload()
+            self._sync_control_cursors()
         else:
-            self.status_label.config(text="● 启动失败", fg=self.colors['danger'])
+            self.status_label.config(text="未运行", fg=self.colors['text_secondary'])
             self._log_to_tunnel(self.current_tunnel_index, f"错误: {message}")
             messagebox.showerror("错误", message)
+            self._sync_control_cursors()
 
     def _stop_tunnel(self):
-        """停止隧道"""
         if self.current_tunnel_index is None:
             return
 
@@ -1387,27 +1465,23 @@ class NgrokGUI:
         if not process.is_running():
             return
 
-        self._log_to_tunnel(self.current_tunnel_index, "正在停止隧道...")
+        self._log_to_tunnel(self.current_tunnel_index, "正在停止隐道...")
         success, message = process.stop()
 
-        self.status_label.config(text="● 未运行", fg=self.colors['text_secondary'])
+        self.status_label.config(text="未运行", fg=self.colors['text_secondary'])
         self.start_button.config(state=tk.NORMAL)
         self.stop_button.config(state=tk.DISABLED)
         self._log_to_tunnel(self.current_tunnel_index, message)
-        self._load_tunnels()  # 刷新列表显示运行状态
-        # 恢复选中状态
+        self._load_tunnels()
         self._restore_selection_after_reload()
+        self._sync_control_cursors()
 
     def _restore_selection_after_reload(self):
-        """在重新加载列表后恢复选中状态"""
         if self.current_tunnel_index is not None and self.current_tunnel_index < len(self.tunnel_cards):
-            # 重新选择当前卡片
             card = self.tunnel_cards[self.current_tunnel_index]
-            card.configure(highlightbackground=self.colors['primary'], highlightthickness=2)
+            self._set_card_selected(card, True)
 
     def _on_tunnel_log(self, tunnel_name, message):
-        """处理隧道日志回调"""
-        # 只有当前选中的隧道才实时显示日志
         if self.current_tunnel_index is not None:
             tunnel = self.config.get(self.current_tunnel_index)
             if tunnel and tunnel['name'] == tunnel_name:
