@@ -1328,7 +1328,7 @@ class NgrokGUI:
         self._sync_control_cursors()
 
     def _add_tunnel(self):
-        dialog = TunnelDialog(self.root, "新增隐道")
+        dialog = TunnelDialog(self.root, "新增隧道")
         self.root.wait_window(dialog)
 
         if dialog.result:
@@ -1339,7 +1339,7 @@ class NgrokGUI:
                 dialog.result['auto_start']
             )
             self._load_tunnels()
-            self._log_system("新增隐道: " + dialog.result['name'])
+            self._log_system("新增隧道: " + dialog.result['name'])
 
 
     def _edit_tunnel(self):
@@ -1420,7 +1420,7 @@ class NgrokGUI:
 
         if (self.current_tunnel_index in self.tunnel_processes and
             self.tunnel_processes[self.current_tunnel_index].is_running()):
-            messagebox.showwarning("提示", "隐道已经在运行")
+            messagebox.showwarning("提示", "隧道已经在运行")
             return
 
         tunnel = self.config.get(self.current_tunnel_index)
@@ -1430,7 +1430,7 @@ class NgrokGUI:
         process = TunnelProcess(tunnel['name'])
         self.tunnel_processes[self.current_tunnel_index] = process
 
-        self._log_to_tunnel(self.current_tunnel_index, f"开始启动隐道: {tunnel['name']}")
+        self._log_to_tunnel(self.current_tunnel_index, f"开始启动隧道: {tunnel['name']}")
         self._log_to_tunnel(self.current_tunnel_index, f"服务器: {tunnel['server']}")
         self._log_to_tunnel(self.current_tunnel_index, f"密钥: {tunnel['key']}")
 
@@ -1465,7 +1465,7 @@ class NgrokGUI:
         if not process.is_running():
             return
 
-        self._log_to_tunnel(self.current_tunnel_index, "正在停止隐道...")
+        self._log_to_tunnel(self.current_tunnel_index, "正在停止隧道...")
         success, message = process.stop()
 
         self.status_label.config(text="未运行", fg=self.colors['text_secondary'])
