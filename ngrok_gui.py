@@ -1730,9 +1730,7 @@ class NgrokGUI:
     def _show_about(self):
         """显示关于对话框"""
         about_text = """Sunny-Ngrok GUI 管理器
-
-版本: 1.0.0
-
+        
 一个用于管理 Sunny-Ngrok 隧道的图形化工具
 
 功能特性:
