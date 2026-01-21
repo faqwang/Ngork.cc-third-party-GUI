@@ -1,5 +1,7 @@
+config/
+core/
 .last_selection
 tunnels.json
-sunny.exe
 settings.json
+sunny.exe
 __pycache__

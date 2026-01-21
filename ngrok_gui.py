@@ -16,6 +16,13 @@ import sys
 import socket
 import ctypes
 from datetime import datetime
+import shutil
+import tempfile
+import urllib.request
+import urllib.error
+import webbrowser
+import zipfile
+import time
 
 # 尝试导入系统托盘支持
 try:
@@ -28,10 +35,557 @@ except ImportError:
     print("运行: pip install pystray Pillow")
 
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CORE_DIR = os.path.join(BASE_DIR, "core")
+CONFIG_DIR = os.path.join(BASE_DIR, "config")
+SUNNY_EXE_PATH = os.path.join(CORE_DIR, "sunny.exe")
+TUNNELS_FILE = os.path.join(CONFIG_DIR, "tunnels.json")
+SETTINGS_FILE = os.path.join(CONFIG_DIR, "settings.json")
+LAST_SELECTION_FILE = os.path.join(CONFIG_DIR, ".last_selection")
+
+SUNNY_ZIP_URL = "https://www.ngrok.cc/sunny/windows_amd64.zip"
+SUNNY_DOWNLOAD_PAGE = "https://www.ngrok.cc/download.html"
+
+
+def ensure_app_dirs():
+    """确保 core 和 config 目录存在，并迁移旧文件"""
+    os.makedirs(CORE_DIR, exist_ok=True)
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+    _migrate_legacy_files()
+
+
+def _migrate_legacy_files():
+    legacy_files = [
+        (TUNNELS_FILE, os.path.join(BASE_DIR, "tunnels.json")),
+        (SETTINGS_FILE, os.path.join(BASE_DIR, "settings.json")),
+        (LAST_SELECTION_FILE, os.path.join(BASE_DIR, ".last_selection")),
+    ]
+    for new_path, old_path in legacy_files:
+        if not os.path.exists(new_path) and os.path.exists(old_path):
+            try:
+                shutil.move(old_path, new_path)
+            except Exception:
+                shutil.copy2(old_path, new_path)
+
+    legacy_sunny = os.path.join(BASE_DIR, "sunny.exe")
+    if not os.path.exists(SUNNY_EXE_PATH) and os.path.exists(legacy_sunny):
+        try:
+            shutil.move(legacy_sunny, SUNNY_EXE_PATH)
+        except Exception:
+            shutil.copy2(legacy_sunny, SUNNY_EXE_PATH)
+
+
+def _build_missing_sunny_layout(parent, on_action):
+    colors = {
+        "bg": "#F5F6FA",
+        "card": "#FFFFFF",
+        "text_primary": "#111827",
+        "text_secondary": "#6B7280",
+        "border": "#E5E7EB"
+    }
+
+    parent.configure(bg=colors["bg"])
+    container = tk.Frame(parent, bg=colors["card"], padx=24, pady=10)
+    container.pack(fill=tk.BOTH, expand=True)
+    container.configure(highlightbackground=colors["border"], highlightthickness=1)
+
+    tk.Label(
+        container,
+        text="缺少核心文件",
+        font=('Microsoft YaHei UI', 12, 'bold'),
+        bg=colors["card"],
+        fg=colors["text_primary"],
+        anchor='w',
+        justify=tk.LEFT
+    ).pack(fill=tk.X, pady=(0, 6))
+
+    tk.Label(
+        container,
+        text="检测到 core\\sunny.exe 不存在。请选择下载方式：",
+        font=('Microsoft YaHei UI', 10),
+        bg=colors["card"],
+        fg=colors["text_primary"],
+        anchor='w',
+        justify=tk.LEFT
+    ).pack(fill=tk.X, pady=(0, 6))
+
+    tk.Label(
+        container,
+        text="自动下载会从官方地址获取并解压到 core 文件夹。",
+        font=('Microsoft YaHei UI', 9),
+        bg=colors["card"],
+        fg=colors["text_secondary"],
+        anchor='w',
+        justify=tk.LEFT
+    ).pack(fill=tk.X, pady=(0, 18))
+
+    button_frame = tk.Frame(container, bg=colors["card"])
+    button_frame.pack(fill=tk.X, pady=8)
+    button_frame.columnconfigure(0, weight=1)
+    button_frame.columnconfigure(1, weight=1)
+
+    ttk.Button(
+        button_frame,
+        text="手动下载（推荐）",
+        command=lambda: on_action("manual"),
+        style='Primary.TButton'
+    ).grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 12))
+
+    ttk.Button(
+        button_frame,
+        text="自动下载并安装",
+        command=lambda: on_action("auto"),
+        style='Secondary.TButton'
+    ).grid(row=1, column=0, sticky="ew", padx=(0, 8))
+
+    ttk.Button(
+        button_frame,
+        text="取消退出",
+        command=lambda: on_action("cancel"),
+        style='Secondary.TButton'
+    ).grid(row=1, column=1, sticky="ew", padx=(8, 0))
+
+
+def _prompt_missing_sunny(root):
+    """提示用户选择 sunny.exe 的处理方式（主界面已运行时）"""
+    dialog = tk.Toplevel(root)
+    dialog.title("缺少核心文件")
+    dialog.geometry("560x240")
+    dialog.resizable(False, False)
+    dialog.transient(root)
+    dialog.grab_set()
+
+    dialog.update_idletasks()
+    x = (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2)
+    y = (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
+    dialog.geometry(f"+{x}+{y}")
+
+    result = {"action": "close"}
+
+    def set_action(action):
+        result["action"] = action
+        dialog.destroy()
+
+    dialog.protocol("WM_DELETE_WINDOW", lambda: set_action("close"))
+
+    _build_missing_sunny_layout(dialog, set_action)
+
+    dialog.wait_window()
+    return result["action"]
+
+
+def _prompt_missing_sunny_startup():
+    """提示用户选择 sunny.exe 的处理方式（主界面尚未启动）"""
+    root = tk.Tk()
+    root.title("缺少核心文件")
+    root.geometry("560x240")
+    root.resizable(False, False)
+
+    root.update_idletasks()
+    x = (root.winfo_screenwidth() // 2) - (root.winfo_width() // 2)
+    y = (root.winfo_screenheight() // 2) - (root.winfo_height() // 2)
+    root.geometry(f"+{x}+{y}")
+
+    result = {"action": "cancel"}
+
+    def finish(action):
+        result["action"] = action
+        root.quit()
+
+    root.protocol("WM_DELETE_WINDOW", lambda: finish("cancel"))
+
+    _build_missing_sunny_layout(root, finish)
+
+    root.mainloop()
+    root.destroy()
+    return result["action"]
+
+
+def _show_manual_download_dialog(root):
+    dialog = tk.Toplevel(root)
+    dialog.title("手动下载指引")
+    dialog.geometry("560x195")
+    dialog.resizable(False, False)
+    dialog.transient(root)
+    dialog.grab_set()
+
+    dialog.update_idletasks()
+    x = (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2)
+    y = (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
+    dialog.geometry(f"+{x}+{y}")
+
+    container = tk.Frame(dialog, padx=24, pady=20)
+    container.pack(fill=tk.BOTH, expand=True)
+
+    tk.Label(
+        container,
+        text="如何安装内核",
+        font=('Microsoft YaHei UI', 12, 'bold'),
+        anchor='w',
+        justify=tk.LEFT
+    ).pack(fill=tk.X, pady=(0, 8))
+
+    tk.Label(
+        container,
+        text="1. 打开下载页面，下载 Windows 版本。\n"
+             "2. 解压后找到 sunny.exe。\n"
+             "3. 将 sunny.exe 放入程序目录的 core 文件夹中。",
+        font=('Microsoft YaHei UI', 10),
+        anchor='w',
+        justify=tk.LEFT
+    ).pack(fill=tk.X, pady=(0, 16))
+
+    button_frame = tk.Frame(container)
+    button_frame.pack(anchor='e')
+
+    def open_page():
+        webbrowser.open(SUNNY_DOWNLOAD_PAGE)
+
+    def open_dir():
+        try:
+            os.startfile(CORE_DIR)
+        except Exception:
+            pass
+
+    ttk.Button(
+        button_frame,
+        text="打开下载页面",
+        command=open_page,
+        style='Primary.TButton'
+    ).pack(side=tk.LEFT, padx=(0, 8))
+
+    ttk.Button(
+        button_frame,
+        text="打开程序Core目录",
+        command=open_dir,
+        style='Secondary.TButton'
+    ).pack(side=tk.LEFT, padx=(0, 8))
+
+    ttk.Button(
+        button_frame,
+        text="关闭",
+        command=dialog.destroy,
+        style='Secondary.TButton'
+    ).pack(side=tk.LEFT)
+
+    dialog.wait_window()
+
+
+class DownloadController:
+    def __init__(self):
+        self.stop_event = threading.Event()
+        self.process = None
+        self.canceled = False
+
+    def cancel(self):
+        self.canceled = True
+        self.stop_event.set()
+        if self.process and self.process.poll() is None:
+            try:
+                self.process.terminate()
+            except Exception:
+                pass
+
+
+def _download_and_extract_sunny(root):
+    """下载并解压 sunny.exe 到 core 目录"""
+    if root is None:
+        return _download_and_extract_sunny_core(None, None)
+
+    controller = DownloadController()
+    result = {"success": False, "message": "下载失败"}
+
+    dialog = tk.Toplevel(root)
+    dialog.title("正在下载")
+    dialog.geometry("480x110")
+    dialog.resizable(False, False)
+    dialog.transient(root)
+    dialog.grab_set()
+
+    dialog.update_idletasks()
+    x = (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2)
+    y = (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
+    dialog.geometry(f"+{x}+{y}")
+
+    container = tk.Frame(dialog, padx=20, pady=20)
+    container.pack(fill=tk.BOTH, expand=True)
+
+    status_var = tk.StringVar(value="正在下载核心文件，请稍候…")
+    tk.Label(
+        container,
+        textvariable=status_var,
+        font=('Microsoft YaHei UI', 10),
+        anchor='w',
+        justify=tk.LEFT
+    ).pack(fill=tk.X, pady=(0, 14))
+
+    progress = ttk.Progressbar(container, mode='indeterminate')
+    progress.pack(fill=tk.X, pady=(0, 14))
+    progress.start(10)
+
+    btn_frame = tk.Frame(container)
+    btn_frame.pack()
+
+    def on_cancel():
+        controller.cancel()
+        status_var.set("正在取消下载…")
+
+    ttk.Button(
+        btn_frame,
+        text="取消",
+        command=on_cancel,
+        style='Secondary.TButton'
+    ).pack()
+
+    def progress_callback(downloaded, total):
+        if total:
+            if progress['mode'] != 'determinate':
+                progress.stop()
+                progress.configure(mode='determinate', maximum=total, value=0)
+            progress['value'] = downloaded
+            percent = int(downloaded * 100 / total)
+            status_var.set(f"正在下载核心文件… {percent}%")
+
+    def worker():
+        success, message = _download_and_extract_sunny_core(controller, progress_callback)
+        result["success"] = success
+        result["message"] = message
+
+        def finish():
+            try:
+                progress.stop()
+            except Exception:
+                pass
+            dialog.destroy()
+
+        root.after(0, finish)
+
+    threading.Thread(target=worker, daemon=True).start()
+    dialog.wait_window()
+    return result["success"], result["message"]
+
+
+def _download_and_extract_sunny_core(controller, progress_callback):
+    try:
+        os.makedirs(CORE_DIR, exist_ok=True)
+
+        fd, zip_path = tempfile.mkstemp(suffix=".zip", dir=CORE_DIR)
+        os.close(fd)
+        _download_file(SUNNY_ZIP_URL, zip_path, controller, progress_callback)
+
+        if controller and controller.stop_event.is_set():
+            try:
+                os.remove(zip_path)
+            except Exception:
+                pass
+            return False, "已取消下载。"
+
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(CORE_DIR)
+
+        try:
+            os.remove(zip_path)
+        except Exception:
+            pass
+
+        exe_path = None
+        for walk_root, _, files in os.walk(CORE_DIR):
+            for filename in files:
+                if filename.lower() == "sunny.exe":
+                    exe_path = os.path.join(walk_root, filename)
+                    break
+            if exe_path:
+                break
+
+        if not exe_path:
+            return False, "下载完成，但未找到 sunny.exe，请尝试手动下载。"
+
+        target_path = SUNNY_EXE_PATH
+        if os.path.abspath(exe_path) != os.path.abspath(target_path):
+            shutil.move(exe_path, target_path)
+
+        _cleanup_core_dir(target_path)
+
+        return True, "下载并安装完成。"
+    except Exception as e:
+        return False, f"自动下载失败: {str(e)}"
+
+
+def _cleanup_core_dir(keep_path):
+    """清理 core 目录，只保留指定核心文件"""
+    keep_abs = os.path.abspath(keep_path)
+    for name in os.listdir(CORE_DIR):
+        item_path = os.path.join(CORE_DIR, name)
+        if os.path.abspath(item_path) == keep_abs:
+            continue
+        try:
+            if os.path.isdir(item_path):
+                shutil.rmtree(item_path, ignore_errors=True)
+            else:
+                os.remove(item_path)
+        except Exception:
+            pass
+
+
+def _download_file(url, dest_path, controller=None, progress_callback=None):
+    try:
+        _download_file_curl(url, dest_path, controller)
+        return
+    except Exception as first_error:
+        try:
+            _download_file_urllib(url, dest_path, controller, progress_callback)
+            return
+        except Exception as second_error:
+            try:
+                _download_file_powershell(url, dest_path, controller)
+                return
+            except Exception as third_error:
+                raise Exception(
+                    f"curl失败: {first_error}; urllib失败: {second_error}; PowerShell失败: {third_error}"
+                )
+
+
+def _download_file_curl(url, dest_path, controller=None):
+    user_agent = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+    )
+    referer = "https://www.ngrok.cc/"
+    curl_cmds = [
+        ["curl", "-L", "-o", dest_path, "-A", user_agent, "-e", referer, url],
+        ["curl.exe", "-L", "-o", dest_path, "-A", user_agent, "-e", referer, url],
+    ]
+    last_error = None
+    for cmd in curl_cmds:
+        try:
+            if controller and controller.stop_event.is_set():
+                raise Exception("已取消下载")
+
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            if controller:
+                controller.process = process
+
+            while True:
+                if controller and controller.stop_event.is_set():
+                    try:
+                        process.terminate()
+                    except Exception:
+                        pass
+                    process.wait(timeout=5)
+                    raise Exception("已取消下载")
+                if process.poll() is not None:
+                    break
+                time.sleep(0.1)
+
+            if process.returncode == 0:
+                return
+
+            stderr = process.stderr.read() if process.stderr else ""
+            stdout = process.stdout.read() if process.stdout else ""
+            last_error = (stderr or stdout or "").strip()
+        except Exception as e:
+            last_error = str(e)
+    raise Exception(last_error or "curl 返回错误")
+
+def _download_file_urllib(url, dest_path, controller=None, progress_callback=None):
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                      "(KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+        "Referer": "https://www.ngrok.cc/"
+    }
+    if controller and controller.stop_event.is_set():
+        raise Exception("已取消下载")
+
+    req = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        status = getattr(resp, "status", None)
+        if status and status != 200:
+            raise urllib.error.HTTPError(url, status, "Bad Status", resp.headers, None)
+        total = resp.getheader("Content-Length")
+        total = int(total) if total and total.isdigit() else None
+        downloaded = 0
+        with open(dest_path, "wb") as f:
+            while True:
+                if controller and controller.stop_event.is_set():
+                    raise Exception("已取消下载")
+                chunk = resp.read(1024 * 256)
+                if not chunk:
+                    break
+                f.write(chunk)
+                downloaded += len(chunk)
+                if progress_callback:
+                    progress_callback(downloaded, total)
+
+
+def _download_file_powershell(url, dest_path, controller=None):
+    if controller and controller.stop_event.is_set():
+        raise Exception("已取消下载")
+    safe_url = url.replace("'", "''")
+    safe_dest = dest_path.replace("'", "''")
+    ps_script = (
+        "$ProgressPreference='SilentlyContinue';"
+        "$headers=@{ 'User-Agent'='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/120.0 Safari/537.36'; 'Referer'='https://www.ngrok.cc/' };"
+        f"Invoke-WebRequest -Uri '{safe_url}' -OutFile '{safe_dest}' -Headers $headers"
+    )
+    process = subprocess.Popen(
+        ["powershell", "-NoProfile", "-Command", ps_script],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True
+    )
+    if controller:
+        controller.process = process
+    while True:
+        if controller and controller.stop_event.is_set():
+            try:
+                process.terminate()
+            except Exception:
+                pass
+            process.wait(timeout=5)
+            raise Exception("已取消下载")
+        if process.poll() is not None:
+            break
+        time.sleep(0.1)
+    if process.returncode != 0:
+        stderr = process.stderr.read() if process.stderr else ""
+        stdout = process.stdout.read() if process.stdout else ""
+        error_text = (stderr or stdout or "").strip()
+        raise Exception(error_text or "PowerShell 返回错误")
+
+
+def ensure_sunny_ready(root=None, startup=False):
+    """确保 sunny.exe 可用，不可用时提示用户处理"""
+    if os.path.exists(SUNNY_EXE_PATH):
+        return "ready"
+
+    if startup:
+        return "missing"
+
+    action = _prompt_missing_sunny(root)
+    if action == "auto":
+        success, message = _download_and_extract_sunny(root)
+        if success:
+            messagebox.showinfo("成功", message)
+            return "ready"
+        if "已取消" in message:
+            return "cancel"
+        messagebox.showerror("错误", message)
+        if messagebox.askyesno("提示", "自动下载失败，是否打开手动下载页面？"):
+            webbrowser.open(SUNNY_DOWNLOAD_PAGE)
+        return "failed"
+    if action == "manual":
+        _show_manual_download_dialog(root)
+        return "manual"
+    if action == "close":
+        return "close"
+    return "cancel"
+
+
 class TunnelConfig:
     """隧道配置管理"""
 
-    def __init__(self, config_file="tunnels.json"):
+    def __init__(self, config_file=TUNNELS_FILE):
         self.config_file = config_file
         self.tunnels = []
         self.load()
@@ -102,7 +656,7 @@ class TunnelConfig:
 class AppSettings:
     """应用程序设置管理"""
 
-    def __init__(self, settings_file="settings.json"):
+    def __init__(self, settings_file=SETTINGS_FILE):
         self.settings_file = settings_file
         self.settings = {
             "close_behavior": None  # None=询问, "minimize"=最小化到托盘, "exit"=退出程序
@@ -156,38 +710,22 @@ class TunnelProcess:
             return False, "隧道已在运行中"
 
         try:
-            # 检查可用的sunny客户端
-            sunny_py = "sunny.py"
-            sunny_exe = "sunny.exe"
-
             cmd = None
             client_type = None
 
-            # 优先使用EXE版本
-            if os.path.exists(sunny_exe):
+            if os.path.exists(SUNNY_EXE_PATH):
                 cmd = [
-                    sunny_exe,
+                    SUNNY_EXE_PATH,
                     "-s", server,
                     "-k", key,
                     "-l", "stdout"
                 ]
                 client_type = "EXE版本"
-            # 备选使用Python版本
-            elif os.path.exists(sunny_py):
-                # Python版本使用 --clientid 参数，只需要clientid（key就是clientid）
-                cmd = [
-                    sys.executable,  # Python解释器
-                    sunny_py,
-                    "--clientid=" + key  # 只需要clientid，不需要server
-                ]
-                client_type = "Python版本"
             else:
-                # 两个都没有，提示下载
-                return False, ("找不到 sunny 客户端程序\n\n"
-                             "请下载以下任一版本：\n"
-                             "1. EXE版本: sunny.exe（推荐）\n"
-                             "2. Python版本: sunny.py\n\n"
-                             "下载地址: https://www.ngrok.cc")
+                return False, ("找不到 core\\sunny.exe\n\n"
+                             "请在启动时选择自动下载，或前往下载页：\n"
+                             "https://www.ngrok.cc/download.html\n"
+                             "下载后解压并将 sunny.exe 放入 core 文件夹。")
 
             # 启动进程 - 使用正确的编码设置
             startupinfo = subprocess.STARTUPINFO()
@@ -553,11 +1091,12 @@ class NgrokGUI:
         self.toolbar_height = 60
 
         # 配置和进程管理
-        self.config = TunnelConfig()
-        self.settings = AppSettings()  # 添加设置管理
+        self.config = TunnelConfig(TUNNELS_FILE)
+        self.settings = AppSettings(SETTINGS_FILE)  # 添加设置管理
         self.tunnel_processes = {}  # 字典：隧道索引 -> TunnelProcess
         self.current_tunnel_index = None
         self.last_selected_index = None  # 记住最后选择的隧道
+        self.last_selection_file = LAST_SELECTION_FILE
 
         # 系统托盘
         self.tray_icon = None
@@ -1755,19 +2294,19 @@ class NgrokGUI:
 
     def _save_last_selection(self):
         try:
-            with open('.last_selection', 'w') as f:
+            with open(self.last_selection_file, 'w', encoding='utf-8') as f:
                 f.write(str(self.last_selected_index))
-        except:
+        except Exception:
             pass
 
     def _restore_last_selection(self):
         try:
-            if os.path.exists('.last_selection'):
-                with open('.last_selection', 'r') as f:
+            if os.path.exists(self.last_selection_file):
+                with open(self.last_selection_file, 'r', encoding='utf-8') as f:
                     index = int(f.read().strip())
                     if 0 <= index < len(self.config.get_all()):
                         self._select_tunnel_card(index)
-        except:
+        except Exception:
             pass
 
     def _update_tunnel_status(self):
@@ -1875,6 +2414,12 @@ class NgrokGUI:
         if self.current_tunnel_index is None:
             return
 
+        ready_state = ensure_sunny_ready(self.root)
+        if ready_state != "ready":
+            if ready_state == "cancel":
+                self._quit_application()
+            return
+
         if (self.current_tunnel_index in self.tunnel_processes and
             self.tunnel_processes[self.current_tunnel_index].is_running()):
             messagebox.showwarning("提示", "隧道已经在运行")
@@ -1975,6 +2520,10 @@ class NgrokGUI:
 
     def _auto_start_tunnels(self):
         """自动启动标记为自启的隧道"""
+        if not os.path.exists(SUNNY_EXE_PATH):
+            self._log_system("缺少 core\\sunny.exe，已跳过自动启动。")
+            return
+
         auto_indexes = [
             i for i, tunnel in enumerate(self.config.get_all())
             if tunnel.get('auto_start', False)
@@ -2457,6 +3006,9 @@ def main():
         notify_existing_instance()
         sys.exit(0)
 
+    ensure_app_dirs()
+
+    startup_state = ensure_sunny_ready(startup=True)
     # 创建主窗口
     root = tk.Tk()
     app = NgrokGUI(root)
