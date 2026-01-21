@@ -805,7 +805,8 @@ class NgrokGUI:
             proxy.attributes('-topmost', False)
             proxy.protocol("WM_DELETE_WINDOW", self._on_closing)
             proxy.bind("<FocusIn>", lambda event: self._show_window())
-            proxy.bind("<Map>", lambda event: self._show_window())
+            proxy.bind("<Map>", lambda event: self._restore_from_minimize())
+            proxy.withdraw()  # 隐藏代理窗口，不在任务栏显示
             self.taskbar_proxy = proxy
         except Exception:
             self.taskbar_proxy = None
@@ -822,7 +823,13 @@ class NgrokGUI:
         self.root.geometry(f"+{x}+{y}")
 
     def _minimize_window(self):
-        self.root.iconify()
+        """最小化窗口"""
+        if self.taskbar_proxy:
+            # 隐藏主窗口，但保持代理窗口可见以便从任务栏恢复
+            self.root.withdraw()
+            self.taskbar_proxy.iconify()
+        else:
+            self.root.iconify()
 
     def _toggle_maximize(self, event=None):
         if self._is_maximized:
@@ -831,13 +838,13 @@ class NgrokGUI:
                 self.root.geometry(self._normal_geometry)
             self._is_maximized = False
             if getattr(self, 'max_button', None):
-                self.max_button.config(text="1")
+                self.max_button.config(text="□")
         else:
             self._normal_geometry = self.root.geometry()
             self.root.state('zoomed')
             self._is_maximized = True
             if getattr(self, 'max_button', None):
-                self.max_button.config(text="2")
+                self.max_button.config(text="❐")
 
     def _start_instance_server(self):
         """启动单实例通信服务器"""
@@ -870,6 +877,13 @@ class NgrokGUI:
         self.root.focus_force()  # 强制获取焦点
         self.root.attributes('-topmost', True)  # 临时置顶
         self.root.after(100, lambda: self.root.attributes('-topmost', False))  # 100ms后取消置顶
+
+    def _restore_from_minimize(self):
+        """从最小化状态恢复窗口"""
+        if self.taskbar_proxy:
+            self.taskbar_proxy.deiconify()
+            self.taskbar_proxy.withdraw()  # 立即隐藏代理窗口
+        self._show_window()
 
     def _ensure_window_visible(self):
         """确保窗口在屏幕可见区域内"""
@@ -1001,7 +1015,8 @@ class NgrokGUI:
             borderwidth=0,
             font=self.menu_font,
             padx=10,
-            pady=4
+            pady=4,
+            cursor='hand2'
         )
         self.settings_button.pack(side=tk.LEFT, padx=(0, 8))
         self.settings_button.configure(menu=self.settings_menu)
@@ -1018,71 +1033,75 @@ class NgrokGUI:
             borderwidth=0,
             font=self.menu_font,
             padx=10,
-            pady=4
+            pady=4,
+            cursor='hand2'
         )
         self.help_button.pack(side=tk.LEFT)
         self.help_button.configure(menu=self.help_menu)
         self.help_button.bind("<Button-1>", self._show_help_menu)
 
-        window_controls = tk.Frame(right_frame, bg=self.colors['titlebar_btn_bg'])
+        window_controls = tk.Frame(right_frame, bg=self.colors['bg_header'])
         window_controls.pack(side=tk.RIGHT)
 
         self.min_button = tk.Button(
             window_controls,
-            text="0",
+            text="—",
             command=self._minimize_window,
-            font=('Marlett', 9),
-            bg=self.colors['titlebar_btn_bg'],
+            font=('Segoe UI', 9),
+            bg=self.colors['bg_header'],
             fg=self.colors['titlebar_glyph'],
             activebackground=self.colors['titlebar_btn_hover'],
             activeforeground=self.colors['titlebar_glyph'],
             relief='flat',
             bd=0,
             highlightthickness=0,
-            width=4,
-            padx=2,
-            pady=3,
+            width=2,
+            height=1,
             cursor='hand2'
         )
-        self.min_button.pack(side=tk.LEFT, padx=(0, 2))
+        self.min_button.pack(side=tk.LEFT, padx=3)
+        self.min_button.bind('<Enter>', lambda e: self.min_button.config(bg=self.colors['titlebar_btn_hover']))
+        self.min_button.bind('<Leave>', lambda e: self.min_button.config(bg=self.colors['bg_header']))
 
         self.max_button = tk.Button(
             window_controls,
-            text="1",
+            text="□",
             command=self._toggle_maximize,
-            font=('Marlett', 9),
-            bg=self.colors['titlebar_btn_bg'],
+            font=('Segoe UI', 11),
+            bg=self.colors['bg_header'],
             fg=self.colors['titlebar_glyph'],
             activebackground=self.colors['titlebar_btn_hover'],
             activeforeground=self.colors['titlebar_glyph'],
             relief='flat',
             bd=0,
             highlightthickness=0,
-            width=4,
-            padx=2,
-            pady=3,
+            width=2,
+            height=1,
             cursor='hand2'
         )
-        self.max_button.pack(side=tk.LEFT, padx=(0, 2))
+        self.max_button.pack(side=tk.LEFT, padx=3)
+        self.max_button.bind('<Enter>', lambda e: self.max_button.config(bg=self.colors['titlebar_btn_hover']))
+        self.max_button.bind('<Leave>', lambda e: self.max_button.config(bg=self.colors['bg_header']))
 
         self.close_button = tk.Button(
             window_controls,
-            text="r",
+            text="×",
             command=self._on_closing,
-            font=('Marlett', 9),
-            bg=self.colors['titlebar_close'],
-            fg='white',
+            font=('Segoe UI', 13),
+            bg=self.colors['bg_header'],
+            fg=self.colors['titlebar_glyph'],
             activebackground=self.colors['titlebar_close_hover'],
             activeforeground='white',
             relief='flat',
             bd=0,
             highlightthickness=0,
-            width=4,
-            padx=2,
-            pady=3,
+            width=2,
+            height=1,
             cursor='hand2'
         )
-        self.close_button.pack(side=tk.LEFT)
+        self.close_button.pack(side=tk.LEFT, padx=3)
+        self.close_button.bind('<Enter>', lambda e: self.close_button.config(bg=self.colors['titlebar_close_hover']))
+        self.close_button.bind('<Leave>', lambda e: self.close_button.config(bg=self.colors['bg_header']))
 
         drag_widgets = [app_bar, drag_area, brand_frame, brand_icon]
         for widget in drag_widgets:
@@ -1231,11 +1250,11 @@ class NgrokGUI:
 
         # 右侧面板 - 控制和日志
         right_panel = tk.Frame(main_container, bg=self.colors['bg_main'])
-        right_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(4, 0), pady=(0, 0))
+        right_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(1, 0), pady=(0, 0))
 
         # 控制区域卡片
         control_card = tk.Frame(right_panel, bg=self.colors['bg_card'], relief='flat', bd=0)
-        control_card.pack(fill=tk.X, pady=(0, 10))
+        control_card.pack(fill=tk.X, pady=(0, 1))
         control_card.configure(highlightbackground=self.colors['border'], highlightthickness=1)
 
         # 控制区域标题
@@ -1357,7 +1376,7 @@ class NgrokGUI:
         log_card.configure(highlightbackground=self.colors['border'], highlightthickness=1)
 
         terminal_frame = tk.Frame(log_card, bg=self.colors['terminal_bg'], bd=0)
-        terminal_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=16)
+        terminal_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
 
         terminal_header = tk.Frame(terminal_frame, bg=self.colors['terminal_header'], height=32)
         terminal_header.pack(fill=tk.X)
@@ -1581,7 +1600,7 @@ class NgrokGUI:
             bd=0,
             cursor='hand2'
         )
-        card.pack(fill=tk.X, pady=(0, 8))
+        card.pack(fill=tk.X, pady=0)
         card.configure(
             highlightbackground=self.colors['border'],
             highlightthickness=1
@@ -1592,7 +1611,7 @@ class NgrokGUI:
         accent_bar.pack(side=tk.LEFT, fill=tk.Y)
 
         content = tk.Frame(card, bg=self.colors['bg_card'])
-        content.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=12, pady=10)
+        content.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=12, pady=4)
 
         name_row = tk.Frame(content, bg=self.colors['bg_card'])
         name_row.pack(fill=tk.X)
