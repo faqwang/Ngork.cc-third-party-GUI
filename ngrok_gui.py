@@ -1217,8 +1217,8 @@ class NgrokGUI:
         self.help_button = _create_toolbar_button(
             actions,
             "\uE897",
-            "帮助",
-            self._show_help_menu
+            "关于",
+            self._show_about
         )
         self.help_button.pack(side=tk.LEFT)
 
