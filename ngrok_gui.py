@@ -7,22 +7,30 @@ Sunny-Ngrok GUI Manager
 
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext
-import json
 import os
-import subprocess
 import threading
 import queue
 import sys
 import socket
 import ctypes
+from ctypes import wintypes
 from datetime import datetime
-import shutil
-import tempfile
-import urllib.request
-import urllib.error
 import webbrowser
-import zipfile
-import time
+
+from ngrok_core import (
+    CORE_DIR,
+    SUNNY_EXE_PATH,
+    TUNNELS_FILE,
+    SETTINGS_FILE,
+    LAST_SELECTION_FILE,
+    SUNNY_DOWNLOAD_PAGE,
+    ensure_app_dirs,
+    DownloadController,
+    _download_and_extract_sunny_core,
+    TunnelConfig,
+    AppSettings,
+    TunnelProcess
+)
 
 # 尝试导入系统托盘支持
 try:
@@ -35,59 +43,28 @@ except ImportError:
     print("运行: pip install pystray Pillow")
 
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CORE_DIR = os.path.join(BASE_DIR, "core")
-CONFIG_DIR = os.path.join(BASE_DIR, "config")
-SUNNY_EXE_PATH = os.path.join(CORE_DIR, "sunny.exe")
-TUNNELS_FILE = os.path.join(CONFIG_DIR, "tunnels.json")
-SETTINGS_FILE = os.path.join(CONFIG_DIR, "settings.json")
-LAST_SELECTION_FILE = os.path.join(CONFIG_DIR, ".last_selection")
-
-SUNNY_ZIP_URL = "https://www.ngrok.cc/sunny/windows_amd64.zip"
-SUNNY_DOWNLOAD_PAGE = "https://www.ngrok.cc/download.html"
-
-
-def ensure_app_dirs():
-    """确保 core 和 config 目录存在，并迁移旧文件"""
-    os.makedirs(CORE_DIR, exist_ok=True)
-    os.makedirs(CONFIG_DIR, exist_ok=True)
-    _migrate_legacy_files()
-
-
-def _migrate_legacy_files():
-    legacy_files = [
-        (TUNNELS_FILE, os.path.join(BASE_DIR, "tunnels.json")),
-        (SETTINGS_FILE, os.path.join(BASE_DIR, "settings.json")),
-        (LAST_SELECTION_FILE, os.path.join(BASE_DIR, ".last_selection")),
-    ]
-    for new_path, old_path in legacy_files:
-        if not os.path.exists(new_path) and os.path.exists(old_path):
-            try:
-                shutil.move(old_path, new_path)
-            except Exception:
-                shutil.copy2(old_path, new_path)
-
-    legacy_sunny = os.path.join(BASE_DIR, "sunny.exe")
-    if not os.path.exists(SUNNY_EXE_PATH) and os.path.exists(legacy_sunny):
-        try:
-            shutil.move(legacy_sunny, SUNNY_EXE_PATH)
-        except Exception:
-            shutil.copy2(legacy_sunny, SUNNY_EXE_PATH)
+LOG_MAX_LINES = 1000
+LOG_DRAIN_BATCH = 200
 
 
 def _build_missing_sunny_layout(parent, on_action):
     colors = {
-        "bg": "#F5F6FA",
+        "bg": "#FAFAF9",
         "card": "#FFFFFF",
-        "text_primary": "#111827",
-        "text_secondary": "#6B7280",
-        "border": "#E5E7EB"
+        "card_shadow": "#E7E5E4",
+        "card_highlight": "#FFFFFF",
+        "text_primary": "#0C0A09",
+        "text_secondary": "#57534E",
+        "border": "#E7E5E4"
     }
 
     parent.configure(bg=colors["bg"])
-    container = tk.Frame(parent, bg=colors["card"], padx=24, pady=10)
-    container.pack(fill=tk.BOTH, expand=True)
-    container.configure(highlightbackground=colors["border"], highlightthickness=1)
+    shell = tk.Frame(parent, bg=colors["card_shadow"])
+    shell.pack(fill=tk.BOTH, expand=True, padx=16, pady=16)
+
+    container = tk.Frame(shell, bg=colors["card"], padx=24, pady=10)
+    container.pack(fill=tk.BOTH, expand=True, padx=1, pady=1)
+    tk.Frame(container, bg=colors["card_highlight"], height=1).pack(fill=tk.X, side=tk.TOP)
 
     tk.Label(
         container,
@@ -150,7 +127,7 @@ def _prompt_missing_sunny(root):
     """提示用户选择 sunny.exe 的处理方式（主界面已运行时）"""
     dialog = tk.Toplevel(root)
     dialog.title("缺少核心文件")
-    dialog.geometry("560x240")
+    dialog.geometry("560x280")
     dialog.resizable(False, False)
     dialog.transient(root)
     dialog.grab_set()
@@ -171,33 +148,6 @@ def _prompt_missing_sunny(root):
     _build_missing_sunny_layout(dialog, set_action)
 
     dialog.wait_window()
-    return result["action"]
-
-
-def _prompt_missing_sunny_startup():
-    """提示用户选择 sunny.exe 的处理方式（主界面尚未启动）"""
-    root = tk.Tk()
-    root.title("缺少核心文件")
-    root.geometry("560x240")
-    root.resizable(False, False)
-
-    root.update_idletasks()
-    x = (root.winfo_screenwidth() // 2) - (root.winfo_width() // 2)
-    y = (root.winfo_screenheight() // 2) - (root.winfo_height() // 2)
-    root.geometry(f"+{x}+{y}")
-
-    result = {"action": "cancel"}
-
-    def finish(action):
-        result["action"] = action
-        root.quit()
-
-    root.protocol("WM_DELETE_WINDOW", lambda: finish("cancel"))
-
-    _build_missing_sunny_layout(root, finish)
-
-    root.mainloop()
-    root.destroy()
     return result["action"]
 
 
@@ -269,22 +219,6 @@ def _show_manual_download_dialog(root):
     ).pack(side=tk.LEFT)
 
     dialog.wait_window()
-
-
-class DownloadController:
-    def __init__(self):
-        self.stop_event = threading.Event()
-        self.process = None
-        self.canceled = False
-
-    def cancel(self):
-        self.canceled = True
-        self.stop_event.set()
-        if self.process and self.process.poll() is None:
-            try:
-                self.process.terminate()
-            except Exception:
-                pass
 
 
 def _download_and_extract_sunny(root):
@@ -365,195 +299,6 @@ def _download_and_extract_sunny(root):
     return result["success"], result["message"]
 
 
-def _download_and_extract_sunny_core(controller, progress_callback):
-    try:
-        os.makedirs(CORE_DIR, exist_ok=True)
-
-        fd, zip_path = tempfile.mkstemp(suffix=".zip", dir=CORE_DIR)
-        os.close(fd)
-        _download_file(SUNNY_ZIP_URL, zip_path, controller, progress_callback)
-
-        if controller and controller.stop_event.is_set():
-            try:
-                os.remove(zip_path)
-            except Exception:
-                pass
-            return False, "已取消下载。"
-
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(CORE_DIR)
-
-        try:
-            os.remove(zip_path)
-        except Exception:
-            pass
-
-        exe_path = None
-        for walk_root, _, files in os.walk(CORE_DIR):
-            for filename in files:
-                if filename.lower() == "sunny.exe":
-                    exe_path = os.path.join(walk_root, filename)
-                    break
-            if exe_path:
-                break
-
-        if not exe_path:
-            return False, "下载完成，但未找到 sunny.exe，请尝试手动下载。"
-
-        target_path = SUNNY_EXE_PATH
-        if os.path.abspath(exe_path) != os.path.abspath(target_path):
-            shutil.move(exe_path, target_path)
-
-        _cleanup_core_dir(target_path)
-
-        return True, "下载并安装完成。"
-    except Exception as e:
-        return False, f"自动下载失败: {str(e)}"
-
-
-def _cleanup_core_dir(keep_path):
-    """清理 core 目录，只保留指定核心文件"""
-    keep_abs = os.path.abspath(keep_path)
-    for name in os.listdir(CORE_DIR):
-        item_path = os.path.join(CORE_DIR, name)
-        if os.path.abspath(item_path) == keep_abs:
-            continue
-        try:
-            if os.path.isdir(item_path):
-                shutil.rmtree(item_path, ignore_errors=True)
-            else:
-                os.remove(item_path)
-        except Exception:
-            pass
-
-
-def _download_file(url, dest_path, controller=None, progress_callback=None):
-    try:
-        _download_file_curl(url, dest_path, controller)
-        return
-    except Exception as first_error:
-        try:
-            _download_file_urllib(url, dest_path, controller, progress_callback)
-            return
-        except Exception as second_error:
-            try:
-                _download_file_powershell(url, dest_path, controller)
-                return
-            except Exception as third_error:
-                raise Exception(
-                    f"curl失败: {first_error}; urllib失败: {second_error}; PowerShell失败: {third_error}"
-                )
-
-
-def _download_file_curl(url, dest_path, controller=None):
-    user_agent = (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
-    )
-    referer = "https://www.ngrok.cc/"
-    curl_cmds = [
-        ["curl", "-L", "-o", dest_path, "-A", user_agent, "-e", referer, url],
-        ["curl.exe", "-L", "-o", dest_path, "-A", user_agent, "-e", referer, url],
-    ]
-    last_error = None
-    for cmd in curl_cmds:
-        try:
-            if controller and controller.stop_event.is_set():
-                raise Exception("已取消下载")
-
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            if controller:
-                controller.process = process
-
-            while True:
-                if controller and controller.stop_event.is_set():
-                    try:
-                        process.terminate()
-                    except Exception:
-                        pass
-                    process.wait(timeout=5)
-                    raise Exception("已取消下载")
-                if process.poll() is not None:
-                    break
-                time.sleep(0.1)
-
-            if process.returncode == 0:
-                return
-
-            stderr = process.stderr.read() if process.stderr else ""
-            stdout = process.stdout.read() if process.stdout else ""
-            last_error = (stderr or stdout or "").strip()
-        except Exception as e:
-            last_error = str(e)
-    raise Exception(last_error or "curl 返回错误")
-
-def _download_file_urllib(url, dest_path, controller=None, progress_callback=None):
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                      "(KHTML, like Gecko) Chrome/120.0 Safari/537.36",
-        "Referer": "https://www.ngrok.cc/"
-    }
-    if controller and controller.stop_event.is_set():
-        raise Exception("已取消下载")
-
-    req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        status = getattr(resp, "status", None)
-        if status and status != 200:
-            raise urllib.error.HTTPError(url, status, "Bad Status", resp.headers, None)
-        total = resp.getheader("Content-Length")
-        total = int(total) if total and total.isdigit() else None
-        downloaded = 0
-        with open(dest_path, "wb") as f:
-            while True:
-                if controller and controller.stop_event.is_set():
-                    raise Exception("已取消下载")
-                chunk = resp.read(1024 * 256)
-                if not chunk:
-                    break
-                f.write(chunk)
-                downloaded += len(chunk)
-                if progress_callback:
-                    progress_callback(downloaded, total)
-
-
-def _download_file_powershell(url, dest_path, controller=None):
-    if controller and controller.stop_event.is_set():
-        raise Exception("已取消下载")
-    safe_url = url.replace("'", "''")
-    safe_dest = dest_path.replace("'", "''")
-    ps_script = (
-        "$ProgressPreference='SilentlyContinue';"
-        "$headers=@{ 'User-Agent'='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/120.0 Safari/537.36'; 'Referer'='https://www.ngrok.cc/' };"
-        f"Invoke-WebRequest -Uri '{safe_url}' -OutFile '{safe_dest}' -Headers $headers"
-    )
-    process = subprocess.Popen(
-        ["powershell", "-NoProfile", "-Command", ps_script],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True
-    )
-    if controller:
-        controller.process = process
-    while True:
-        if controller and controller.stop_event.is_set():
-            try:
-                process.terminate()
-            except Exception:
-                pass
-            process.wait(timeout=5)
-            raise Exception("已取消下载")
-        if process.poll() is not None:
-            break
-        time.sleep(0.1)
-    if process.returncode != 0:
-        stderr = process.stderr.read() if process.stderr else ""
-        stdout = process.stdout.read() if process.stdout else ""
-        error_text = (stderr or stdout or "").strip()
-        raise Exception(error_text or "PowerShell 返回错误")
-
-
 def ensure_sunny_ready(root=None, startup=False):
     """确保 sunny.exe 可用，不可用时提示用户处理"""
     if os.path.exists(SUNNY_EXE_PATH):
@@ -582,251 +327,6 @@ def ensure_sunny_ready(root=None, startup=False):
     return "cancel"
 
 
-class TunnelConfig:
-    """隧道配置管理"""
-
-    def __init__(self, config_file=TUNNELS_FILE):
-        self.config_file = config_file
-        self.tunnels = []
-        self.load()
-
-    def load(self):
-        """加载配置"""
-        if os.path.exists(self.config_file):
-            try:
-                with open(self.config_file, 'r', encoding='utf-8') as f:
-                    self.tunnels = json.load(f)
-            except Exception as e:
-                print(f"加载配置失败: {e}")
-                self.tunnels = []
-        else:
-            self.tunnels = []
-
-    def save(self):
-        """保存配置"""
-        try:
-            with open(self.config_file, 'w', encoding='utf-8') as f:
-                json.dump(self.tunnels, f, ensure_ascii=False, indent=2)
-            return True
-        except Exception as e:
-            print(f"保存配置失败: {e}")
-            return False
-
-    def add(self, name, server, key, auto_start=False):
-        """添加隧道"""
-        tunnel = {
-            "name": name,
-            "server": server,
-            "key": key,
-            "auto_start": auto_start
-        }
-        self.tunnels.append(tunnel)
-        return self.save()
-
-    def update(self, index, name, server, key, auto_start=False):
-        """更新隧道"""
-        if 0 <= index < len(self.tunnels):
-            self.tunnels[index] = {
-                "name": name,
-                "server": server,
-                "key": key,
-                "auto_start": auto_start
-            }
-            return self.save()
-        return False
-
-    def delete(self, index):
-        """删除隧道"""
-        if 0 <= index < len(self.tunnels):
-            self.tunnels.pop(index)
-            return self.save()
-        return False
-
-    def get(self, index):
-        """获取隧道"""
-        if 0 <= index < len(self.tunnels):
-            return self.tunnels[index]
-        return None
-
-    def get_all(self):
-        """获取所有隧道"""
-        return self.tunnels
-
-
-class AppSettings:
-    """应用程序设置管理"""
-
-    def __init__(self, settings_file=SETTINGS_FILE):
-        self.settings_file = settings_file
-        self.settings = {
-            "close_behavior": None  # None=询问, "minimize"=最小化到托盘, "exit"=退出程序
-        }
-        self.load()
-
-    def load(self):
-        """加载设置"""
-        if os.path.exists(self.settings_file):
-            try:
-                with open(self.settings_file, 'r', encoding='utf-8') as f:
-                    loaded_settings = json.load(f)
-                    self.settings.update(loaded_settings)
-            except Exception as e:
-                print(f"加载设置失败: {e}")
-
-    def save(self):
-        """保存设置"""
-        try:
-            with open(self.settings_file, 'w', encoding='utf-8') as f:
-                json.dump(self.settings, f, ensure_ascii=False, indent=2)
-            return True
-        except Exception as e:
-            print(f"保存设置失败: {e}")
-            return False
-
-    def get(self, key, default=None):
-        """获取设置"""
-        return self.settings.get(key, default)
-
-    def set(self, key, value):
-        """设置值"""
-        self.settings[key] = value
-        return self.save()
-
-
-class TunnelProcess:
-    """隧道进程管理"""
-
-    def __init__(self, tunnel_name):
-        self.tunnel_name = tunnel_name
-        self.process = None
-        self.running = False
-        self.log_queue = queue.Queue()
-        self.reader_thread = None
-        self.logs = []  # 存储日志历史
-
-    def start(self, server, key, log_callback=None):
-        """启动隧道"""
-        if self.running:
-            return False, "隧道已在运行中"
-
-        try:
-            cmd = None
-            client_type = None
-
-            if os.path.exists(SUNNY_EXE_PATH):
-                cmd = [
-                    SUNNY_EXE_PATH,
-                    "-s", server,
-                    "-k", key,
-                    "-l", "stdout"
-                ]
-                client_type = "EXE版本"
-            else:
-                return False, ("找不到 core\\sunny.exe\n\n"
-                             "请在启动时选择自动下载，或前往下载页：\n"
-                             "https://www.ngrok.cc/download.html\n"
-                             "下载后解压并将 sunny.exe 放入 core 文件夹。")
-
-            # 启动进程 - 使用正确的编码设置
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-
-            self.process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                stdin=subprocess.PIPE,
-                startupinfo=startupinfo,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-                bufsize=1,
-                universal_newlines=False,  # 改为False，手动处理编码
-                encoding=None,  # 不自动编码
-                errors=None
-            )
-
-            self.running = True
-
-            # 启动日志读取线程
-            if log_callback:
-                self.reader_thread = threading.Thread(
-                    target=self._read_output,
-                    args=(log_callback,),
-                    daemon=True
-                )
-                self.reader_thread.start()
-
-            return True, f"隧道启动成功 (使用{client_type})"
-
-        except FileNotFoundError as e:
-            return False, f"启动失败: 找不到必要的程序文件\n{str(e)}"
-        except Exception as e:
-            return False, f"启动失败: {str(e)}"
-
-    def stop(self):
-        """停止隧道"""
-        if not self.running:
-            return False, "隧道未运行"
-
-        try:
-            if self.process:
-                self.process.terminate()
-                self.process.wait(timeout=5)
-            self.running = False
-            return True, "隧道已停止"
-        except subprocess.TimeoutExpired:
-            if self.process:
-                self.process.kill()
-            self.running = False
-            return True, "隧道已强制停止"
-        except Exception as e:
-            return False, f"停止失败: {str(e)}"
-
-    def _read_output(self, callback):
-        """读取进程输出"""
-        try:
-            # 尝试多种编码方式读取
-            for raw_line in iter(self.process.stdout.readline, b''):
-                if raw_line:
-                    # 尝试多种编码解码
-                    line = None
-                    for encoding in ['utf-8', 'gbk', 'gb2312', 'cp936']:
-                        try:
-                            line = raw_line.decode(encoding).rstrip()
-                            break
-                        except:
-                            continue
-
-                    if line is None:
-                        # 如果所有编码都失败，使用替换模式
-                        line = raw_line.decode('utf-8', errors='replace').rstrip()
-
-                    self.logs.append(line)  # 保存到历史
-                    callback(self.tunnel_name, line)
-                if not self.running:
-                    break
-        except Exception as e:
-            error_msg = f"日志读取错误: {str(e)}"
-            self.logs.append(error_msg)
-            callback(self.tunnel_name, error_msg)
-
-    def is_running(self):
-        """检查是否运行中"""
-        if self.process and self.running:
-            poll = self.process.poll()
-            if poll is not None:
-                self.running = False
-            return self.running
-        return False
-
-    def get_logs(self):
-        """获取日志历史"""
-        return self.logs
-
-    def clear_logs(self):
-        """清空日志"""
-        self.logs = []
-
-
 class TunnelDialog(tk.Toplevel):
     """隧道配置对话框"""
 
@@ -838,12 +338,12 @@ class TunnelDialog(tk.Toplevel):
 
         # 现代化配色
         self.colors = {
-            'bg': '#F5F6FA',
+            'bg': '#FAFAF9',
             'card': '#FFFFFF',
-            'primary': '#111827',
-            'text_primary': '#111827',
-            'text_secondary': '#6B7280',
-            'border': '#E5E7EB'
+            'primary': '#1C1917',
+            'text_primary': '#0C0A09',
+            'text_secondary': '#57534E',
+            'border': '#E7E5E4'
         }
 
         self.configure(bg=self.colors['bg'])
@@ -874,9 +374,12 @@ class TunnelDialog(tk.Toplevel):
     def _create_widgets(self):
         """创建控件"""
         # 主卡片容器
-        card = tk.Frame(self, bg=self.colors['card'], relief='flat', bd=0)
-        card.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
-        card.configure(highlightbackground=self.colors['border'], highlightthickness=1)
+        card_shell = tk.Frame(self, bg=self.colors['border'])
+        card_shell.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+
+        card = tk.Frame(card_shell, bg=self.colors['card'], relief='flat', bd=0)
+        card.pack(fill=tk.BOTH, expand=True, padx=1, pady=1)
+        tk.Frame(card, bg='white', height=1).pack(fill=tk.X, side=tk.TOP)
 
         # 内容区域
         content = tk.Frame(card, bg=self.colors['card'])
@@ -1037,66 +540,74 @@ class NgrokGUI:
 
     def __init__(self, root):
         self.root = root
-        self.root.title("Sunny-Ngrok 管理器")
+        self.app_title = "Sunny-Ngrok 管理器"
+        self.root.title(self.app_title)
         self.root.geometry("1000x650")
         self._is_maximized = False
         self._normal_geometry = None
         self._drag_offset_x = 0
         self._drag_offset_y = 0
+        self._win32_hook_installed = False
+        self._orig_wndproc = None
+        self._wndproc = None
+        self._taskbar_toggle_guard = False
         self._enable_custom_titlebar()
 
         # 现代化配色方案
         self.colors = {
-            'primary': '#111827',        # 主色 - 深色按钮
-            'primary_dark': '#0B1220',   # 主色加深
-            'primary_light': '#E5E7EB',  # 主色浅背景
-            'accent': '#FF7A00',         # 强调色 - 橙色
-            'accent_dark': '#E46D00',    # 强调色加深
-            'accent_light': '#FFF1E6',   # 强调色浅背景
-            'success': '#22C55E',        # 成功 - 绿色
-            'success_bg': '#E9F9EF',     # 成功 - 背景
-            'danger': '#EF4444',         # 危险 - 红色
-            'danger_dark': '#DC2626',    # 危险 - 深红
+            'primary': '#1C1917',        # 主色 - 深色按钮
+            'primary_dark': '#0C0A09',   # 主色加深
+            'primary_light': '#F5F5F4',  # 主色浅背景
+            'accent': '#CA8A04',         # 强调色 - 琥珀
+            'accent_dark': '#A16207',    # 强调色加深
+            'accent_light': '#FEF3C7',   # 强调色浅背景
+            'success': '#16A34A',        # 成功 - 绿色
+            'success_bg': '#DCFCE7',     # 成功 - 背景
+            'danger': '#DC2626',         # 危险 - 红色
+            'danger_dark': '#B91C1C',    # 危险 - 深红
             'danger_light': '#FEE2E2',   # 危险 - 浅红
             'warning': '#F59E0B',        # 警告 - 黄色
-            'neutral_bg': '#F3F4F6',     # 中性状态背景
-            'bg_main': '#F5F6FA',        # 页面背景
+            'neutral_bg': '#F5F5F4',     # 中性状态背景
+            'bg_main': '#FAFAF9',        # 页面背景
             'bg_card': '#FFFFFF',        # 卡片背景
             'bg_header': '#FFFFFF',      # 顶部栏背景
-            'bg_list': '#F7F8FB',        # 列表区域背景
-            'card_hover': '#F8FAFF',     # 卡片悬停
-            'card_selected': '#FFF6ED',  # 卡片选中
-            'text_primary': '#111827',   # 主文本
-            'text_secondary': '#6B7280', # 次级文本
-            'text_muted': '#9CA3AF',     # 弱化文本
-            'border': '#E5E7EB',         # 边框
-            'hover': '#F3F4F6',          # 悬停
-            'terminal_bg': '#1F2124',    # 终端背景
-            'terminal_header': '#2A2D31',# 终端头部
-            'terminal_text': '#DDE3EA',  # 终端文本
-            'terminal_muted': '#9CA3AF', # 终端弱化
-            'terminal_border': '#32363C',# 终端边框
-            'status_off': '#D1D5DB',     # 未运行指示
-            'button_bg': '#F6F7FB',      # 次级按钮背景
-            'button_shadow': '#D4DAE3',  # 按钮阴影
-            'button_danger_bg': '#FDECEC', # 危险按钮背景
-            'titlebar_btn_bg': '#F6F7FB',  # 标题栏按钮背景
-            'titlebar_btn_hover': '#EEF0F5', # 标题栏按钮悬停
+            'bg_list': '#F5F5F4',        # 列表区域背景
+            'card_hover': '#F5F5F4',     # 卡片悬停
+            'card_selected': '#FFFBEB',  # 卡片选中
+            'card_shadow': '#E7E5E4',    # 卡片阴影
+            'card_highlight': '#FFFFFF', # 卡片高光
+            'text_primary': '#0C0A09',   # 主文本
+            'text_secondary': '#57534E', # 次级文本
+            'text_muted': '#A8A29E',     # 弱化文本
+            'border': '#E7E5E4',         # 边框
+            'hover': '#F5F5F4',          # 悬停
+            'terminal_bg': '#0F172A',    # 终端背景
+            'terminal_header': '#111827',# 终端头部
+            'terminal_text': '#E2E8F0',  # 终端文本
+            'terminal_muted': '#94A3B8', # 终端弱化
+            'terminal_border': '#1F2937',# 终端边框
+            'status_off': '#D6D3D1',     # 未运行指示
+            'button_bg': '#F5F5F4',      # 次级按钮背景
+            'button_shadow': '#E7E5E4',  # 按钮阴影
+            'button_danger_bg': '#FEE2E2', # 危险按钮背景
+            'titlebar_btn_bg': '#F5F5F4',  # 标题栏按钮背景
+            'titlebar_btn_hover': '#E7E5E4', # 标题栏按钮悬停
             'titlebar_close': '#E81123',  # 关闭按钮背景
             'titlebar_close_hover': '#F1707A', # 关闭按钮悬停
-            'titlebar_glyph': '#1F2937'   # 标题栏图标色
+            'titlebar_glyph': '#1C1917'   # 标题栏图标色
         }
         self.menu_font = ('Microsoft YaHei UI', 9)
         self.menu_item_font = ('Microsoft YaHei UI', 9)
-        self.toolbar_height = 60
+        self.toolbar_height = 64
 
         # 配置和进程管理
         self.config = TunnelConfig(TUNNELS_FILE)
         self.settings = AppSettings(SETTINGS_FILE)  # 添加设置管理
-        self.tunnel_processes = {}  # 字典：隧道索引 -> TunnelProcess
+        self.tunnel_processes = {}  # 字典：隧道ID -> TunnelProcess
         self.current_tunnel_index = None
         self.last_selected_index = None  # 记住最后选择的隧道
         self.last_selection_file = LAST_SELECTION_FILE
+        self.log_queue = queue.Queue()
 
         # 系统托盘
         self.tray_icon = None
@@ -1119,6 +630,8 @@ class NgrokGUI:
         self.root.update_idletasks()
         self._normal_geometry = self.root.geometry()
         self.root.after(80, self._ensure_window_visible)
+        self.root.after(100, self._drain_log_queue)
+        self.root.after(350, self._install_taskbar_toggle)
 
         # 绑定关闭事件
         self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
@@ -1183,11 +696,13 @@ class NgrokGUI:
                        borderwidth=1,
                        focuscolor='none',
                        font=('Microsoft YaHei UI', 9),
-                       padding=(12, 6))
+                       padding=(14, 7))
         style.map('Secondary.TButton',
-                 background=[('active', self.colors['hover'])])
+                 background=[('active', self.colors['hover']),
+                            ('pressed', self.colors['primary_light'])],
+                 foreground=[('disabled', self.colors['text_secondary'])])
 
-        # ���� Button ��ʽ - ǿ����ť
+        # 配置 Button 样式 - 强调按钮
         style.configure('Accent.TButton',
                        background=self.colors['accent'],
                        foreground='white',
@@ -1207,7 +722,7 @@ class NgrokGUI:
                        borderwidth=0,
                        focuscolor='none',
                        font=('Microsoft YaHei UI', 9),
-                       padding=(6, 4))
+                       padding=(8, 6))
         style.map('Ghost.TButton',
                  background=[('active', self.colors['hover'])],
                  foreground=[('active', self.colors['text_primary'])])
@@ -1218,9 +733,9 @@ class NgrokGUI:
                        borderwidth=0,
                        focuscolor='none',
                        font=('Microsoft YaHei UI', 9),
-                       padding=(6, 4))
+                       padding=(8, 6))
         style.map('DangerGhost.TButton',
-                 background=[('active', self.colors['accent_light'])])
+                 background=[('active', self.colors['danger_light'])])
 
         # 配置 Button 样式 - 危险按钮
         style.configure('Danger.TButton',
@@ -1286,8 +801,8 @@ class NgrokGUI:
             self.root.geometry(f"{width}x{height}+{x}+{y}")
             self.root.deiconify()
             self._ensure_window_visible()
-            self._create_taskbar_proxy()
             self._ensure_taskbar_icon()
+            self._install_taskbar_toggle()
             self.root.lift()
             self.root.attributes('-topmost', True)
             self.root.after(80, lambda: self.root.attributes('-topmost', False))
@@ -1297,23 +812,54 @@ class NgrokGUI:
             except Exception:
                 pass
 
+    def _get_hwnd(self):
+        hwnd = self.root.winfo_id()
+        parent = ctypes.windll.user32.GetParent(hwnd)
+        return parent if parent else hwnd
+
+    def _get_window_long(self, hwnd, index):
+        if ctypes.sizeof(ctypes.c_void_p) == ctypes.sizeof(ctypes.c_long):
+            return ctypes.windll.user32.GetWindowLongW(hwnd, index)
+        fn = ctypes.windll.user32.GetWindowLongPtrW
+        fn.restype = ctypes.c_void_p
+        value = fn(hwnd, index)
+        return value.value if isinstance(value, ctypes.c_void_p) else value
+
+    def _set_window_long(self, hwnd, index, value):
+        if ctypes.sizeof(ctypes.c_void_p) == ctypes.sizeof(ctypes.c_long):
+            return ctypes.windll.user32.SetWindowLongW(hwnd, index, int(value))
+        fn = ctypes.windll.user32.SetWindowLongPtrW
+        fn.restype = ctypes.c_void_p
+        return fn(hwnd, index, ctypes.c_void_p(int(value)))
+
     def _ensure_taskbar_icon(self):
         """确保无边框窗口显示在任务栏（Windows）"""
         if sys.platform != "win32":
             return
         try:
-            hwnd = ctypes.windll.user32.GetParent(self.root.winfo_id())
+            hwnd = self._get_hwnd()
             GWL_EXSTYLE = -20
+            GWL_STYLE = -16
             WS_EX_APPWINDOW = 0x00040000
             WS_EX_TOOLWINDOW = 0x00000080
+            WS_MINIMIZEBOX = 0x00020000
+            WS_SYSMENU = 0x00080000
             SWP_NOMOVE = 0x0002
             SWP_NOSIZE = 0x0001
             SWP_NOZORDER = 0x0004
             SWP_FRAMECHANGED = 0x0020
-            style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-            style = style | WS_EX_APPWINDOW
-            style = style & ~WS_EX_TOOLWINDOW
-            ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style)
+            ex_style = self._get_window_long(hwnd, GWL_EXSTYLE)
+            ex_style = ex_style | WS_EX_APPWINDOW
+            ex_style = ex_style & ~WS_EX_TOOLWINDOW
+            self._set_window_long(hwnd, GWL_EXSTYLE, ex_style)
+            style = self._get_window_long(hwnd, GWL_STYLE)
+            style = style | WS_MINIMIZEBOX | WS_SYSMENU
+            self._set_window_long(hwnd, GWL_STYLE, style)
+            if getattr(self, "app_title", None):
+                try:
+                    ctypes.windll.user32.SetWindowTextW(hwnd, self.app_title)
+                except Exception:
+                    self.root.title(self.app_title)
             ctypes.windll.user32.SetWindowPos(
                 hwnd,
                 0,
@@ -1326,8 +872,68 @@ class NgrokGUI:
             # 确保窗口处于可见状态
             self.root.state('normal')
             self.root.deiconify()
+            # 初次刷新时短暂隐藏/显示以强制任务栏更新
+            if not getattr(self, "_taskbar_icon_refreshed", False):
+                self._taskbar_icon_refreshed = True
+                self.root.withdraw()
+                self.root.after(20, self.root.deiconify)
         except Exception:
             pass
+
+    def _install_taskbar_toggle(self):
+        """拦截任务栏点击，实现最小化/显示切换（Windows）"""
+        if sys.platform != "win32" or self._win32_hook_installed:
+            return
+        try:
+            hwnd = self._get_hwnd()
+
+            GWL_WNDPROC = -4
+            WM_SYSCOMMAND = 0x0112
+            SC_MINIMIZE = 0xF020
+            SC_RESTORE = 0xF120
+
+            self._orig_wndproc = self._get_window_long(hwnd, GWL_WNDPROC)
+            if not self._orig_wndproc:
+                return
+
+            @ctypes.WINFUNCTYPE(
+                wintypes.LRESULT, wintypes.HWND, wintypes.UINT,
+                wintypes.WPARAM, wintypes.LPARAM
+            )
+            def _wndproc(h, msg, wparam, lparam):
+                if msg == WM_SYSCOMMAND:
+                    cmd = wparam & 0xFFF0
+                    if cmd in (SC_MINIMIZE, SC_RESTORE):
+                        if not self._taskbar_toggle_guard:
+                            self._toggle_taskbar_visibility()
+                        return 0
+                return ctypes.windll.user32.CallWindowProcW(
+                    ctypes.c_void_p(self._orig_wndproc), h, msg, wparam, lparam
+                )
+
+            self._wndproc = _wndproc
+            self._set_window_long(
+                hwnd,
+                GWL_WNDPROC,
+                ctypes.cast(self._wndproc, ctypes.c_void_p).value
+            )
+            self._win32_hook_installed = True
+        except Exception:
+            self._win32_hook_installed = False
+
+    def _toggle_taskbar_visibility(self):
+        self._taskbar_toggle_guard = True
+        try:
+            try:
+                state = self.root.state()
+            except Exception:
+                state = ""
+            if state == "iconic" or not self.root.winfo_viewable():
+                self._show_window()
+            else:
+                self._minimize_window()
+        finally:
+            self.root.after(120, lambda: setattr(self, "_taskbar_toggle_guard", False))
 
     def _create_taskbar_proxy(self):
         """创建任务栏代理窗口，确保无边框主窗可出现在任务栏"""
@@ -1363,12 +969,17 @@ class NgrokGUI:
 
     def _minimize_window(self):
         """最小化窗口"""
-        if self.taskbar_proxy:
-            # 隐藏主窗口，但保持代理窗口可见以便从任务栏恢复
-            self.root.withdraw()
-            self.taskbar_proxy.iconify()
-        else:
-            self.root.iconify()
+        if sys.platform == "win32":
+            try:
+                hwnd = self.root.winfo_id()
+                parent = ctypes.windll.user32.GetParent(hwnd)
+                if parent:
+                    hwnd = parent
+                ctypes.windll.user32.ShowWindow(hwnd, 6)  # SW_MINIMIZE
+                return
+            except Exception:
+                pass
+        self.root.iconify()
 
     def _toggle_maximize(self, event=None):
         if self._is_maximized:
@@ -1412,6 +1023,7 @@ class NgrokGUI:
         """显示窗口并置顶"""
         self.root.deiconify()  # 显示窗口
         self._ensure_window_visible()
+        self._ensure_taskbar_icon()
         self.root.lift()  # 置顶
         self.root.focus_force()  # 强制获取焦点
         self.root.attributes('-topmost', True)  # 临时置顶
@@ -1419,9 +1031,6 @@ class NgrokGUI:
 
     def _restore_from_minimize(self):
         """从最小化状态恢复窗口"""
-        if self.taskbar_proxy:
-            self.taskbar_proxy.deiconify()
-            self.taskbar_proxy.withdraw()  # 立即隐藏代理窗口
         self._show_window()
 
     def _ensure_window_visible(self):
@@ -1500,7 +1109,9 @@ class NgrokGUI:
         app_bar = tk.Frame(self.root, bg=self.colors['bg_header'], height=self.toolbar_height)
         app_bar.pack(fill=tk.X)
         app_bar.pack_propagate(False)
-        app_bar.configure(highlightbackground=self.colors['border'], highlightthickness=1)
+        app_bar.configure(highlightthickness=0)
+        tk.Frame(app_bar, bg=self.colors['card_highlight'], height=1).pack(fill=tk.X, side=tk.TOP)
+        tk.Frame(app_bar, bg=self.colors['border'], height=1).pack(fill=tk.X, side=tk.BOTTOM)
 
         brand_frame = tk.Frame(app_bar, bg=self.colors['bg_header'])
         brand_frame.pack(side=tk.LEFT, padx=16)
@@ -1528,8 +1139,8 @@ class NgrokGUI:
             brand_frame,
             text="GUI Pro",
             font=('Microsoft YaHei UI', 8, 'bold'),
-            bg=self.colors['neutral_bg'],
-            fg=self.colors['text_secondary'],
+            bg=self.colors['accent_light'],
+            fg=self.colors['accent_dark'],
             padx=6,
             pady=2
         ).pack(side=tk.LEFT, padx=(8, 0))
@@ -1543,9 +1154,29 @@ class NgrokGUI:
         right_frame = tk.Frame(app_bar, bg=self.colors['bg_header'])
         right_frame.pack(side=tk.RIGHT, padx=8)
 
+        def open_official_site():
+            webbrowser.open("https://www.ngrok.cc/")
+
+        self.official_button = tk.Button(
+            actions,
+            text="\u2302 官网",
+            command=open_official_site,
+            bg=self.colors['button_bg'],
+            fg=self.colors['text_primary'],
+            activebackground=self.colors['hover'],
+            activeforeground=self.colors['text_primary'],
+            relief='flat',
+            borderwidth=0,
+            font=self.menu_font,
+            padx=10,
+            pady=4,
+            cursor='hand2'
+        )
+        self.official_button.pack(side=tk.LEFT, padx=(0, 8))
+
         self.settings_button = tk.Menubutton(
             actions,
-            text="设置",
+            text="\u2699 设置",
             bg=self.colors['button_bg'],
             fg=self.colors['text_primary'],
             activebackground=self.colors['hover'],
@@ -1563,7 +1194,7 @@ class NgrokGUI:
 
         self.help_button = tk.Menubutton(
             actions,
-            text="帮助",
+            text="\u24D8 帮助",
             bg=self.colors['button_bg'],
             fg=self.colors['text_primary'],
             activebackground=self.colors['hover'],
@@ -1649,7 +1280,7 @@ class NgrokGUI:
             widget.bind('<Double-Button-1>', self._toggle_maximize)
 
         main_container = tk.Frame(self.root, bg=self.colors['bg_main'])
-        main_container.pack(fill=tk.BOTH, expand=True)
+        main_container.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
 
         # 创建左右分栏布局
         # 左侧面板 - 隧道列表
@@ -1658,15 +1289,16 @@ class NgrokGUI:
         left_panel.pack_propagate(False)
 
         # 左侧卡片容器
-        left_card = tk.Frame(left_panel, bg=self.colors['bg_card'], relief='flat', bd=0)
-        left_card.pack(fill=tk.BOTH, expand=True)
+        left_shell = tk.Frame(left_panel, bg=self.colors['card_shadow'])
+        left_shell.pack(fill=tk.BOTH, expand=True)
 
-        # 添加阴影效果（通过边框模拟）
-        left_card.configure(highlightbackground=self.colors['border'], highlightthickness=1)
+        left_card = tk.Frame(left_shell, bg=self.colors['bg_card'], relief='flat', bd=0)
+        left_card.pack(fill=tk.BOTH, expand=True, padx=1, pady=1)
+        tk.Frame(left_card, bg=self.colors['card_highlight'], height=1).pack(fill=tk.X, side=tk.TOP)
 
         # 隧道列表标题区域
         header_frame = tk.Frame(left_card, bg=self.colors['bg_card'], height=48)
-        header_frame.pack(fill=tk.X, padx=16, pady=(16, 8))
+        header_frame.pack(fill=tk.X, padx=16, pady=(16, 10))
         header_frame.pack_propagate(False)
 
         title_label = tk.Label(
@@ -1698,7 +1330,7 @@ class NgrokGUI:
 
         # 隧道列表容器 - 使用Canvas和Scrollbar实现可滚动的卡片列表
         list_container = tk.Frame(left_card, bg=self.colors['bg_list'])
-        list_container.pack(fill=tk.BOTH, expand=True, padx=16, pady=(0, 10))
+        list_container.pack(fill=tk.BOTH, expand=True, padx=16, pady=(0, 12))
 
         # 创建Canvas和Scrollbar
         self.tunnel_canvas = tk.Canvas(
@@ -1740,7 +1372,7 @@ class NgrokGUI:
 
         # 按钮区域
         button_frame = tk.Frame(left_card, bg=self.colors['bg_card'])
-        button_frame.pack(fill=tk.X, padx=16, pady=(6, 14))
+        button_frame.pack(fill=tk.X, padx=16, pady=(6, 16))
 
         btn_row = tk.Frame(button_frame, bg=self.colors['bg_card'])
         btn_row.pack(fill=tk.X)
@@ -1789,16 +1421,19 @@ class NgrokGUI:
 
         # 右侧面板 - 控制和日志
         right_panel = tk.Frame(main_container, bg=self.colors['bg_main'])
-        right_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(1, 0), pady=(0, 0))
+        right_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 0), pady=(0, 0))
 
         # 控制区域卡片
-        control_card = tk.Frame(right_panel, bg=self.colors['bg_card'], relief='flat', bd=0)
-        control_card.pack(fill=tk.X, pady=(0, 1))
-        control_card.configure(highlightbackground=self.colors['border'], highlightthickness=1)
+        control_shell = tk.Frame(right_panel, bg=self.colors['card_shadow'])
+        control_shell.pack(fill=tk.X, pady=(0, 4))
+
+        control_card = tk.Frame(control_shell, bg=self.colors['bg_card'], relief='flat', bd=0)
+        control_card.pack(fill=tk.X, padx=1, pady=1)
+        tk.Frame(control_card, bg=self.colors['card_highlight'], height=1).pack(fill=tk.X, side=tk.TOP)
 
         # 控制区域标题
         control_header = tk.Frame(control_card, bg=self.colors['bg_card'])
-        control_header.pack(fill=tk.X, padx=20, pady=(16, 12))
+        control_header.pack(fill=tk.X, padx=20, pady=(18, 12))
 
         title_group = tk.Frame(control_header, bg=self.colors['bg_card'])
         title_group.pack(side=tk.LEFT, fill=tk.X, expand=True)
@@ -1850,7 +1485,7 @@ class NgrokGUI:
 
         # 状态信息行
         status_frame = tk.Frame(control_card, bg=self.colors['bg_card'])
-        status_frame.pack(fill=tk.X, padx=20, pady=(0, 16))
+        status_frame.pack(fill=tk.X, padx=20, pady=(0, 18))
 
         address_group = tk.Frame(status_frame, bg=self.colors['bg_card'])
         address_group.pack(side=tk.LEFT, padx=(0, 24))
@@ -1910,14 +1545,17 @@ class NgrokGUI:
         self._sync_control_cursors()
 
         # 日志区域卡片
-        log_card = tk.Frame(right_panel, bg=self.colors['bg_card'], relief='flat', bd=0)
-        log_card.pack(fill=tk.BOTH, expand=True)
-        log_card.configure(highlightbackground=self.colors['border'], highlightthickness=1)
+        log_shell = tk.Frame(right_panel, bg=self.colors['card_shadow'])
+        log_shell.pack(fill=tk.BOTH, expand=True)
+
+        log_card = tk.Frame(log_shell, bg=self.colors['bg_card'], relief='flat', bd=0)
+        log_card.pack(fill=tk.BOTH, expand=True, padx=1, pady=1)
+        tk.Frame(log_card, bg=self.colors['card_highlight'], height=1).pack(fill=tk.X, side=tk.TOP)
 
         terminal_frame = tk.Frame(log_card, bg=self.colors['terminal_bg'], bd=0)
         terminal_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
 
-        terminal_header = tk.Frame(terminal_frame, bg=self.colors['terminal_header'], height=32)
+        terminal_header = tk.Frame(terminal_frame, bg=self.colors['terminal_header'], height=34)
         terminal_header.pack(fill=tk.X)
         terminal_header.pack_propagate(False)
 
@@ -2139,7 +1777,7 @@ class NgrokGUI:
             bd=0,
             cursor='hand2'
         )
-        card.pack(fill=tk.X, pady=0)
+        card.pack(fill=tk.X, pady=6)
         card.configure(
             highlightbackground=self.colors['border'],
             highlightthickness=1
@@ -2150,7 +1788,7 @@ class NgrokGUI:
         accent_bar.pack(side=tk.LEFT, fill=tk.Y)
 
         content = tk.Frame(card, bg=self.colors['bg_card'])
-        content.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=12, pady=4)
+        content.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=12, pady=8)
 
         name_row = tk.Frame(content, bg=self.colors['bg_card'])
         name_row.pack(fill=tk.X)
@@ -2249,9 +1887,9 @@ class NgrokGUI:
         if tunnel:
             self.current_tunnel_label.config(text=tunnel['name'], fg=self.colors['text_primary'])
             self.address_label.config(text=tunnel.get('server', '--'), fg=self.colors['text_secondary'])
-
-            is_running = (index in self.tunnel_processes and
-                         self.tunnel_processes[index].is_running())
+            tunnel_id = tunnel.get("id")
+            is_running = (tunnel_id in self.tunnel_processes and
+                         self.tunnel_processes[tunnel_id].is_running())
 
             self._set_status_badge(is_running)
             self._sync_control_buttons(is_running, enabled=True)
@@ -2267,7 +1905,8 @@ class NgrokGUI:
 
         # 创建新卡片
         for i, tunnel in enumerate(self.config.get_all()):
-            is_running = i in self.tunnel_processes and self.tunnel_processes[i].is_running()
+            tunnel_id = tunnel.get("id")
+            is_running = tunnel_id in self.tunnel_processes and self.tunnel_processes[tunnel_id].is_running()
             card = self._create_tunnel_card(tunnel, i, is_running)
             self.tunnel_cards.append(card)
 
@@ -2283,12 +1922,18 @@ class NgrokGUI:
         self.log_text.config(state=tk.NORMAL)
         self.log_text.delete(1.0, tk.END)
 
-        if self.current_tunnel_index in self.tunnel_processes:
-            logs = self.tunnel_processes[self.current_tunnel_index].get_logs()
-            for log in logs:
-                timestamp = datetime.now().strftime("%H:%M:%S")
-                self.log_text.insert(tk.END, f"[{timestamp}] {log}\n")
-            self.log_text.see(tk.END)
+        if self.current_tunnel_index is not None:
+            tunnel = self.config.get(self.current_tunnel_index)
+            tunnel_id = tunnel.get("id") if tunnel else None
+            if tunnel_id in self.tunnel_processes:
+                logs = self.tunnel_processes[tunnel_id].get_logs()
+                if len(logs) > LOG_MAX_LINES:
+                    logs = logs[-LOG_MAX_LINES:]
+                if logs:
+                    self.log_text.insert(tk.END, "".join(
+                        f"[{timestamp}] {log}\n" for timestamp, log in logs
+                    ))
+                    self.log_text.see(tk.END)
 
         self.log_text.config(state=tk.DISABLED)
 
@@ -2313,8 +1958,10 @@ class NgrokGUI:
         if self.current_tunnel_index is None:
             return
 
-        is_running = (self.current_tunnel_index in self.tunnel_processes and
-                     self.tunnel_processes[self.current_tunnel_index].is_running())
+        tunnel = self.config.get(self.current_tunnel_index)
+        tunnel_id = tunnel.get("id") if tunnel else None
+        is_running = (tunnel_id in self.tunnel_processes and
+                     self.tunnel_processes[tunnel_id].is_running())
 
         self._set_status_badge(is_running)
         self._sync_control_buttons(is_running, enabled=True)
@@ -2337,8 +1984,6 @@ class NgrokGUI:
 
     def _edit_tunnel(self):
         """编辑隧道"""
-        print(f"[DEBUG] 开始编辑，current_tunnel_index = {self.current_tunnel_index}")
-
         if self.current_tunnel_index is None:
             messagebox.showwarning("警告", "请先选择一个隧道")
             return
@@ -2347,20 +1992,13 @@ class NgrokGUI:
         edit_index = self.current_tunnel_index
 
         tunnel = self.config.get(edit_index)
-        print(f"[DEBUG] 获取到的隧道数据: {tunnel}")
-
         if not tunnel:
             return
 
         dialog = TunnelDialog(self.root, "编辑隧道", tunnel)
         self.root.wait_window(dialog)
 
-        print(f"[DEBUG] 对话框关闭，result = {dialog.result}")
-
         if dialog.result:
-            print(f"[DEBUG] 准备更新索引 {edit_index}")
-            print(f"[DEBUG] 新数据: {dialog.result}")
-
             success = self.config.update(
                 edit_index,  # 使用保存的索引
                 dialog.result['name'],
@@ -2369,15 +2007,11 @@ class NgrokGUI:
                 dialog.result['auto_start']
             )
 
-            print(f"[DEBUG] 更新结果: {success}")
-            print(f"[DEBUG] 更新后的配置: {self.config.get_all()}")
-
             if success:
                 # 恢复索引
                 self.current_tunnel_index = edit_index
                 self._load_tunnels()
                 self._restore_selection_after_reload()  # 恢复选中状态
-                print(f"[DEBUG] 刷新后 current_tunnel_index = {self.current_tunnel_index}")
                 self._log_system("更新隧道: " + dialog.result['name'])
             else:
                 messagebox.showerror("错误", "保存配置失败")
@@ -2394,11 +2028,12 @@ class NgrokGUI:
 
         if messagebox.askyesno("确认", f"确定要删除隧道 '{tunnel['name']}' 吗？"):
             # 如果隧道正在运行，先停止
-            if self.current_tunnel_index in self.tunnel_processes:
-                process = self.tunnel_processes[self.current_tunnel_index]
+            tunnel_id = tunnel.get("id")
+            if tunnel_id in self.tunnel_processes:
+                process = self.tunnel_processes[tunnel_id]
                 if process.is_running():
                     process.stop()
-                del self.tunnel_processes[self.current_tunnel_index]
+                del self.tunnel_processes[tunnel_id]
 
             self.config.delete(self.current_tunnel_index)
             self._load_tunnels()
@@ -2420,39 +2055,40 @@ class NgrokGUI:
                 self._quit_application()
             return
 
-        if (self.current_tunnel_index in self.tunnel_processes and
-            self.tunnel_processes[self.current_tunnel_index].is_running()):
-            messagebox.showwarning("提示", "隧道已经在运行")
-            return
-
         tunnel = self.config.get(self.current_tunnel_index)
         if not tunnel:
             return
 
-        process = TunnelProcess(tunnel['name'])
-        self.tunnel_processes[self.current_tunnel_index] = process
+        tunnel_id = tunnel.get("id")
+        if (tunnel_id in self.tunnel_processes and
+            self.tunnel_processes[tunnel_id].is_running()):
+            messagebox.showwarning("提示", "隧道已经在运行")
+            return
 
-        self._log_to_tunnel(self.current_tunnel_index, f"开始启动隧道: {tunnel['name']}")
-        self._log_to_tunnel(self.current_tunnel_index, f"服务器: {tunnel['server']}")
-        self._log_to_tunnel(self.current_tunnel_index, f"密钥: {tunnel['key']}")
+        process = TunnelProcess(tunnel_id, tunnel['name'])
+        self.tunnel_processes[tunnel_id] = process
+
+        self._log_to_tunnel(tunnel_id, f"开始启动隧道: {tunnel['name']}")
+        self._log_to_tunnel(tunnel_id, f"服务器: {tunnel['server']}")
+        self._log_to_tunnel(tunnel_id, f"密钥: {tunnel['key']}")
 
         success, message = process.start(
             tunnel['server'],
             tunnel['key'],
-            self._on_tunnel_log
+            lambda msg, tid=tunnel_id: self._on_tunnel_log(tid, msg)
         )
 
         if success:
             self._set_status_badge(True)
             self._sync_control_buttons(True, enabled=True)
-            self._log_to_tunnel(self.current_tunnel_index, message)
+            self._log_to_tunnel(tunnel_id, message)
             self._load_tunnels()
             self._restore_selection_after_reload()
             self._sync_control_cursors()
         else:
             self._set_status_badge(False)
             self._sync_control_buttons(False, enabled=True)
-            self._log_to_tunnel(self.current_tunnel_index, f"错误: {message}")
+            self._log_to_tunnel(tunnel_id, f"错误: {message}")
             messagebox.showerror("错误", message)
             self._sync_control_cursors()
 
@@ -2460,19 +2096,21 @@ class NgrokGUI:
         if self.current_tunnel_index is None:
             return
 
-        if self.current_tunnel_index not in self.tunnel_processes:
+        tunnel = self.config.get(self.current_tunnel_index)
+        tunnel_id = tunnel.get("id") if tunnel else None
+        if tunnel_id not in self.tunnel_processes:
             return
 
-        process = self.tunnel_processes[self.current_tunnel_index]
+        process = self.tunnel_processes[tunnel_id]
         if not process.is_running():
             return
 
-        self._log_to_tunnel(self.current_tunnel_index, "正在停止隧道...")
+        self._log_to_tunnel(tunnel_id, "正在停止隧道...")
         success, message = process.stop()
 
         self._set_status_badge(False)
         self._sync_control_buttons(False, enabled=True)
-        self._log_to_tunnel(self.current_tunnel_index, message)
+        self._log_to_tunnel(tunnel_id, message)
         self._load_tunnels()
         self._restore_selection_after_reload()
         self._sync_control_cursors()
@@ -2482,37 +2120,61 @@ class NgrokGUI:
             card = self.tunnel_cards[self.current_tunnel_index]
             self._set_card_selected(card, True)
 
-    def _on_tunnel_log(self, tunnel_name, message):
+    def _drain_log_queue(self):
+        try:
+            count = 0
+            while count < LOG_DRAIN_BATCH:
+                tunnel_id, timestamp, message = self.log_queue.get_nowait()
+                self._log_to_tunnel(tunnel_id, message, timestamp)
+                count += 1
+        except queue.Empty:
+            pass
+        self.root.after(100, self._drain_log_queue)
+
+    def _append_log_text(self, log_message):
+        self.log_text.config(state=tk.NORMAL)
+        self.log_text.insert(tk.END, log_message)
+        self._trim_log_text()
+        self.log_text.see(tk.END)
+        self.log_text.config(state=tk.DISABLED)
+
+    def _trim_log_text(self):
+        line_count = int(self.log_text.index('end-1c').split('.')[0])
+        overflow = line_count - LOG_MAX_LINES
+        if overflow > 0:
+            self.log_text.delete('1.0', f'{overflow + 1}.0')
+
+    def _on_tunnel_log(self, tunnel_id, message):
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        self.log_queue.put((tunnel_id, timestamp, message))
+
+    def _log_to_tunnel(self, tunnel_id, message, timestamp=None):
+        """记录日志到指定隧道"""
+        if timestamp is None:
+            timestamp = datetime.now().strftime("%H:%M:%S")
+
+        process = self.tunnel_processes.get(tunnel_id)
+        if process:
+            process.add_log(message, timestamp)
+
+        current_tunnel_id = None
         if self.current_tunnel_index is not None:
             tunnel = self.config.get(self.current_tunnel_index)
-            if tunnel and tunnel['name'] == tunnel_name:
-                timestamp = datetime.now().strftime("%H:%M:%S")
-                log_message = f"[{timestamp}] {message}\n"
-
-                self.log_text.config(state=tk.NORMAL)
-                self.log_text.insert(tk.END, log_message)
-                self.log_text.see(tk.END)
-                self.log_text.config(state=tk.DISABLED)
-
-    def _log_to_tunnel(self, tunnel_index, message):
-        """记录日志到指定隧道"""
-        if tunnel_index in self.tunnel_processes:
-            self.tunnel_processes[tunnel_index].logs.append(message)
+            current_tunnel_id = tunnel.get("id") if tunnel else None
 
         # 如果是当前选中的隧道，实时显示
-        if tunnel_index == self.current_tunnel_index:
-            timestamp = datetime.now().strftime("%H:%M:%S")
+        if tunnel_id == current_tunnel_id:
             log_message = f"[{timestamp}] {message}\n"
-
-            self.log_text.config(state=tk.NORMAL)
-            self.log_text.insert(tk.END, log_message)
-            self.log_text.see(tk.END)
-            self.log_text.config(state=tk.DISABLED)
+            self._append_log_text(log_message)
 
     def _clear_log(self):
         """清空当前隧道的日志"""
-        if self.current_tunnel_index is not None and self.current_tunnel_index in self.tunnel_processes:
-            self.tunnel_processes[self.current_tunnel_index].clear_logs()
+        tunnel_id = None
+        if self.current_tunnel_index is not None:
+            tunnel = self.config.get(self.current_tunnel_index)
+            tunnel_id = tunnel.get("id") if tunnel else None
+        if tunnel_id in self.tunnel_processes:
+            self.tunnel_processes[tunnel_id].clear_logs()
 
         self.log_text.config(state=tk.NORMAL)
         self.log_text.delete(1.0, tk.END)
@@ -2539,8 +2201,9 @@ class NgrokGUI:
             if 0 <= i < len(self.config.get_all()):
                 tunnel = self.config.get(i)
                 if tunnel:
+                    tunnel_id = tunnel.get("id")
                     self._select_tunnel_card(i)
-                    self._log_to_tunnel(i, f"自动启动隧道: {tunnel['name']}")
+                    self._log_to_tunnel(tunnel_id, f"自动启动隧道: {tunnel['name']}")
                     self._start_tunnel()
             self.root.after(200, lambda: start_next(pos + 1))
 
@@ -2768,17 +2431,19 @@ class NgrokGUI:
         """真正退出应用程序"""
         # 检查是否有隧道在运行
         running_tunnels = []
-        for idx, process in self.tunnel_processes.items():
+        for tunnel_id, process in self.tunnel_processes.items():
             if process.is_running():
-                tunnel = self.config.get(idx)
+                tunnel = self.config.get_by_id(tunnel_id)
                 if tunnel:
                     running_tunnels.append(tunnel['name'])
+                else:
+                    running_tunnels.append(process.tunnel_name)
 
         if running_tunnels:
             tunnel_list = "\n".join(running_tunnels)
             if messagebox.askyesno("确认", f"以下隧道正在运行中：\n{tunnel_list}\n\n确定要退出吗？"):
                 # 停止所有运行中的隧道
-                for idx, process in self.tunnel_processes.items():
+                for process in self.tunnel_processes.values():
                     if process.is_running():
                         process.stop()
                 # 关闭单实例服务器
@@ -2814,10 +2479,7 @@ class NgrokGUI:
 
         # 只在当前没有选中隧道时显示系统日志
         if self.current_tunnel_index is None:
-            self.log_text.config(state=tk.NORMAL)
-            self.log_text.insert(tk.END, log_message)
-            self.log_text.see(tk.END)
-            self.log_text.config(state=tk.DISABLED)
+            self._append_log_text(log_message)
 
     def _on_closing(self):
         """关闭窗口"""
@@ -2942,17 +2604,19 @@ class NgrokGUI:
 
         # 没有托盘支持时，检查是否有隧道在运行
         running_tunnels = []
-        for idx, process in self.tunnel_processes.items():
+        for tunnel_id, process in self.tunnel_processes.items():
             if process.is_running():
-                tunnel = self.config.get(idx)
+                tunnel = self.config.get_by_id(tunnel_id)
                 if tunnel:
                     running_tunnels.append(tunnel['name'])
+                else:
+                    running_tunnels.append(process.tunnel_name)
 
         if running_tunnels:
             tunnel_list = "\n".join(running_tunnels)
             if messagebox.askyesno("确认", f"以下隧道正在运行中：\n{tunnel_list}\n\n确定要退出吗？"):
                 # 停止所有运行中的隧道
-                for idx, process in self.tunnel_processes.items():
+                for process in self.tunnel_processes.values():
                     if process.is_running():
                         process.stop()
                 # 关闭单实例服务器
@@ -3008,7 +2672,7 @@ def main():
 
     ensure_app_dirs()
 
-    startup_state = ensure_sunny_ready(startup=True)
+    ensure_sunny_ready(startup=True)
     # 创建主窗口
     root = tk.Tk()
     app = NgrokGUI(root)
