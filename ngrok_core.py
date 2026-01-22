@@ -7,6 +7,7 @@ Sunny-Ngrok Core Utilities
 
 import json
 import os
+import sys
 import subprocess
 import threading
 from datetime import datetime
@@ -21,10 +22,19 @@ import time
 import uuid
 
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+def _get_app_base_dir():
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+BASE_DIR = _get_app_base_dir()
 CORE_DIR = os.path.join(BASE_DIR, "core")
 CONFIG_DIR = os.path.join(BASE_DIR, "config")
 SUNNY_EXE_PATH = os.path.join(CORE_DIR, "sunny.exe")
+BUNDLE_DIR = getattr(sys, "_MEIPASS", None)
+BUNDLE_CORE_DIR = os.path.join(BUNDLE_DIR, "core") if BUNDLE_DIR else None
+BUNDLE_SUNNY_EXE_PATH = os.path.join(BUNDLE_CORE_DIR, "sunny.exe") if BUNDLE_CORE_DIR else None
 TUNNELS_FILE = os.path.join(CONFIG_DIR, "tunnels.json")
 SETTINGS_FILE = os.path.join(CONFIG_DIR, "settings.json")
 LAST_SELECTION_FILE = os.path.join(CONFIG_DIR, ".last_selection")
@@ -61,6 +71,15 @@ def _migrate_legacy_files():
             shutil.move(legacy_sunny, SUNNY_EXE_PATH)
         except Exception:
             shutil.copy2(legacy_sunny, SUNNY_EXE_PATH)
+
+
+def get_sunny_exe_path():
+    """获取可用的 sunny.exe 路径（开发/打包兼容）"""
+    if os.path.exists(SUNNY_EXE_PATH):
+        return SUNNY_EXE_PATH
+    if BUNDLE_SUNNY_EXE_PATH and os.path.exists(BUNDLE_SUNNY_EXE_PATH):
+        return BUNDLE_SUNNY_EXE_PATH
+    return SUNNY_EXE_PATH
 
 
 class DownloadController:
@@ -434,10 +453,11 @@ class TunnelProcess:
         try:
             cmd = None
             client_type = None
+            exe_path = get_sunny_exe_path()
 
-            if os.path.exists(SUNNY_EXE_PATH):
+            if os.path.exists(exe_path):
                 cmd = [
-                    SUNNY_EXE_PATH,
+                    exe_path,
                     "-s", server,
                     "-k", key,
                     "-l", "stdout"

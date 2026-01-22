@@ -20,6 +20,7 @@ import webbrowser
 from ngrok_core import (
     CORE_DIR,
     SUNNY_EXE_PATH,
+    get_sunny_exe_path,
     TUNNELS_FILE,
     SETTINGS_FILE,
     LAST_SELECTION_FILE,
@@ -301,7 +302,7 @@ def _download_and_extract_sunny(root):
 
 def ensure_sunny_ready(root=None, startup=False):
     """确保 sunny.exe 可用，不可用时提示用户处理"""
-    if os.path.exists(SUNNY_EXE_PATH):
+    if os.path.exists(get_sunny_exe_path()):
         return "ready"
 
     if startup:
@@ -1157,58 +1158,69 @@ class NgrokGUI:
         def open_official_site():
             webbrowser.open("https://www.ngrok.cc/")
 
-        self.official_button = tk.Button(
+        def _create_toolbar_button(parent, icon_text, label_text, command):
+            btn = tk.Frame(parent, bg=self.colors['button_bg'], padx=10, pady=4, cursor='hand2')
+            icon = tk.Label(
+                btn,
+                text=icon_text,
+                font=('Segoe MDL2 Assets', 10),
+                bg=self.colors['button_bg'],
+                fg=self.colors['text_secondary']
+            )
+            icon.pack(side=tk.LEFT)
+            label = tk.Label(
+                btn,
+                text=label_text,
+                font=self.menu_font,
+                bg=self.colors['button_bg'],
+                fg=self.colors['text_primary']
+            )
+            label.pack(side=tk.LEFT, padx=(4, 0))
+
+            def on_enter(_):
+                btn.configure(bg=self.colors['hover'])
+                icon.configure(bg=self.colors['hover'], fg=self.colors['text_primary'])
+                label.configure(bg=self.colors['hover'])
+
+            def on_leave(_):
+                btn.configure(bg=self.colors['button_bg'])
+                icon.configure(bg=self.colors['button_bg'], fg=self.colors['text_secondary'])
+                label.configure(bg=self.colors['button_bg'])
+
+            def on_click(_):
+                command()
+
+            btn.bind("<Enter>", on_enter)
+            btn.bind("<Leave>", on_leave)
+            for widget in (btn, icon, label):
+                widget.bind("<Button-1>", on_click)
+                widget.configure(cursor='hand2')
+
+            return btn
+
+        self.official_button = _create_toolbar_button(
             actions,
-            text="\u2302 官网",
-            command=open_official_site,
-            bg=self.colors['button_bg'],
-            fg=self.colors['text_primary'],
-            activebackground=self.colors['hover'],
-            activeforeground=self.colors['text_primary'],
-            relief='flat',
-            borderwidth=0,
-            font=self.menu_font,
-            padx=10,
-            pady=4,
-            cursor='hand2'
+            "\uE774",
+            "官网",
+            open_official_site
         )
         self.official_button.pack(side=tk.LEFT, padx=(0, 8))
 
-        self.settings_button = tk.Menubutton(
+        self.settings_button = _create_toolbar_button(
             actions,
-            text="\u2699 设置",
-            bg=self.colors['button_bg'],
-            fg=self.colors['text_primary'],
-            activebackground=self.colors['hover'],
-            activeforeground=self.colors['text_primary'],
-            relief='flat',
-            borderwidth=0,
-            font=self.menu_font,
-            padx=10,
-            pady=4,
-            cursor='hand2'
+            "\uE713",
+            "设置",
+            self._show_settings_menu
         )
         self.settings_button.pack(side=tk.LEFT, padx=(0, 8))
-        self.settings_button.configure(menu=self.settings_menu)
-        self.settings_button.bind("<Button-1>", self._show_settings_menu)
 
-        self.help_button = tk.Menubutton(
+        self.help_button = _create_toolbar_button(
             actions,
-            text="\u24D8 帮助",
-            bg=self.colors['button_bg'],
-            fg=self.colors['text_primary'],
-            activebackground=self.colors['hover'],
-            activeforeground=self.colors['text_primary'],
-            relief='flat',
-            borderwidth=0,
-            font=self.menu_font,
-            padx=10,
-            pady=4,
-            cursor='hand2'
+            "\uE897",
+            "帮助",
+            self._show_help_menu
         )
         self.help_button.pack(side=tk.LEFT)
-        self.help_button.configure(menu=self.help_menu)
-        self.help_button.bind("<Button-1>", self._show_help_menu)
 
         window_controls = tk.Frame(right_frame, bg=self.colors['bg_header'])
         window_controls.pack(side=tk.RIGHT)
@@ -2182,7 +2194,7 @@ class NgrokGUI:
 
     def _auto_start_tunnels(self):
         """自动启动标记为自启的隧道"""
-        if not os.path.exists(SUNNY_EXE_PATH):
+        if not os.path.exists(get_sunny_exe_path()):
             self._log_system("缺少 core\\sunny.exe，已跳过自动启动。")
             return
 
