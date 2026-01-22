@@ -28,10 +28,37 @@ def _get_app_base_dir():
     return os.path.dirname(os.path.abspath(__file__))
 
 
-BASE_DIR = _get_app_base_dir()
-CORE_DIR = os.path.join(BASE_DIR, "core")
-CONFIG_DIR = os.path.join(BASE_DIR, "config")
+def _is_dir_writable(path):
+    try:
+        os.makedirs(path, exist_ok=True)
+        test_path = os.path.join(path, ".write_test")
+        with open(test_path, "w", encoding="utf-8") as f:
+            f.write("ok")
+        os.remove(test_path)
+        return True
+    except Exception:
+        return False
+
+
+def _get_storage_dir(app_dir):
+    if _is_dir_writable(app_dir):
+        return app_dir
+    local_appdata = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
+    if local_appdata:
+        candidate = os.path.join(local_appdata, "SunnyNgrokGUI")
+        if _is_dir_writable(candidate):
+            return candidate
+    return app_dir
+
+
+APP_DIR = _get_app_base_dir()
+BASE_DIR = APP_DIR
+STORAGE_DIR = _get_storage_dir(APP_DIR)
+CORE_DIR = os.path.join(STORAGE_DIR, "core")
+CONFIG_DIR = os.path.join(STORAGE_DIR, "config")
 SUNNY_EXE_PATH = os.path.join(CORE_DIR, "sunny.exe")
+APP_CORE_DIR = os.path.join(APP_DIR, "core")
+APP_SUNNY_EXE_PATH = os.path.join(APP_CORE_DIR, "sunny.exe")
 BUNDLE_DIR = getattr(sys, "_MEIPASS", None)
 BUNDLE_CORE_DIR = os.path.join(BUNDLE_DIR, "core") if BUNDLE_DIR else None
 BUNDLE_SUNNY_EXE_PATH = os.path.join(BUNDLE_CORE_DIR, "sunny.exe") if BUNDLE_CORE_DIR else None
@@ -54,9 +81,9 @@ def ensure_app_dirs():
 
 def _migrate_legacy_files():
     legacy_files = [
-        (TUNNELS_FILE, os.path.join(BASE_DIR, "tunnels.json")),
-        (SETTINGS_FILE, os.path.join(BASE_DIR, "settings.json")),
-        (LAST_SELECTION_FILE, os.path.join(BASE_DIR, ".last_selection")),
+        (TUNNELS_FILE, os.path.join(APP_DIR, "tunnels.json")),
+        (SETTINGS_FILE, os.path.join(APP_DIR, "settings.json")),
+        (LAST_SELECTION_FILE, os.path.join(APP_DIR, ".last_selection")),
     ]
     for new_path, old_path in legacy_files:
         if not os.path.exists(new_path) and os.path.exists(old_path):
@@ -65,7 +92,7 @@ def _migrate_legacy_files():
             except Exception:
                 shutil.copy2(old_path, new_path)
 
-    legacy_sunny = os.path.join(BASE_DIR, "sunny.exe")
+    legacy_sunny = os.path.join(APP_DIR, "sunny.exe")
     if not os.path.exists(SUNNY_EXE_PATH) and os.path.exists(legacy_sunny):
         try:
             shutil.move(legacy_sunny, SUNNY_EXE_PATH)
@@ -77,6 +104,8 @@ def get_sunny_exe_path():
     """获取可用的 sunny.exe 路径（开发/打包兼容）"""
     if os.path.exists(SUNNY_EXE_PATH):
         return SUNNY_EXE_PATH
+    if os.path.exists(APP_SUNNY_EXE_PATH):
+        return APP_SUNNY_EXE_PATH
     if BUNDLE_SUNNY_EXE_PATH and os.path.exists(BUNDLE_SUNNY_EXE_PATH):
         return BUNDLE_SUNNY_EXE_PATH
     return SUNNY_EXE_PATH

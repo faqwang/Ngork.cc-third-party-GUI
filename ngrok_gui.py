@@ -6,6 +6,7 @@ Sunny-Ngrok GUI Manager
 """
 
 import tkinter as tk
+import tkinter.font as tkfont
 from tkinter import ttk, messagebox, scrolledtext
 import os
 import threading
@@ -19,7 +20,6 @@ import webbrowser
 
 from ngrok_core import (
     CORE_DIR,
-    SUNNY_EXE_PATH,
     get_sunny_exe_path,
     TUNNELS_FILE,
     SETTINGS_FILE,
@@ -194,6 +194,7 @@ def _show_manual_download_dialog(root):
 
     def open_dir():
         try:
+            os.makedirs(CORE_DIR, exist_ok=True)
             os.startfile(CORE_DIR)
         except Exception:
             pass
@@ -612,7 +613,6 @@ class NgrokGUI:
 
         # 系统托盘
         self.tray_icon = None
-        self.taskbar_proxy = None
 
         # 初始化设置菜单引用
         self.settings_menu = None
@@ -881,6 +881,22 @@ class NgrokGUI:
         except Exception:
             pass
 
+    def _is_window_minimized(self):
+        if sys.platform == "win32":
+            try:
+                return bool(ctypes.windll.user32.IsIconic(self._get_hwnd()))
+            except Exception:
+                return False
+        return self.root.state() == "iconic"
+
+    def _is_window_visible(self):
+        if sys.platform == "win32":
+            try:
+                return bool(ctypes.windll.user32.IsWindowVisible(self._get_hwnd()))
+            except Exception:
+                return True
+        return self.root.winfo_viewable()
+
     def _install_taskbar_toggle(self):
         """拦截任务栏点击，实现最小化/显示切换（Windows）"""
         if sys.platform != "win32" or self._win32_hook_installed:
@@ -922,40 +938,26 @@ class NgrokGUI:
         except Exception:
             self._win32_hook_installed = False
 
+    def _uninstall_taskbar_toggle(self):
+        if sys.platform != "win32" or not self._win32_hook_installed or not self._orig_wndproc:
+            return
+        try:
+            hwnd = self._get_hwnd()
+            GWL_WNDPROC = -4
+            self._set_window_long(hwnd, GWL_WNDPROC, self._orig_wndproc)
+        except Exception:
+            pass
+        self._win32_hook_installed = False
+
     def _toggle_taskbar_visibility(self):
         self._taskbar_toggle_guard = True
         try:
-            try:
-                state = self.root.state()
-            except Exception:
-                state = ""
-            if state == "iconic" or not self.root.winfo_viewable():
+            if self._is_window_minimized() or not self._is_window_visible():
                 self._show_window()
             else:
                 self._minimize_window()
         finally:
             self.root.after(120, lambda: setattr(self, "_taskbar_toggle_guard", False))
-
-    def _create_taskbar_proxy(self):
-        """创建任务栏代理窗口，确保无边框主窗可出现在任务栏"""
-        if sys.platform != "win32":
-            return
-        if self.taskbar_proxy:
-            return
-        try:
-            proxy = tk.Toplevel(self.root)
-            proxy.title(self.root.title())
-            proxy.geometry("1x1+0+0")
-            proxy.overrideredirect(False)
-            proxy.attributes('-alpha', 0.0)
-            proxy.attributes('-topmost', False)
-            proxy.protocol("WM_DELETE_WINDOW", self._on_closing)
-            proxy.bind("<FocusIn>", lambda event: self._show_window())
-            proxy.bind("<Map>", lambda event: self._restore_from_minimize())
-            proxy.withdraw()  # 隐藏代理窗口，不在任务栏显示
-            self.taskbar_proxy = proxy
-        except Exception:
-            self.taskbar_proxy = None
 
     def _start_move(self, event):
         if self._is_maximized:
@@ -977,6 +979,10 @@ class NgrokGUI:
                 if parent:
                     hwnd = parent
                 ctypes.windll.user32.ShowWindow(hwnd, 6)  # SW_MINIMIZE
+                try:
+                    self.root.state('iconic')
+                except Exception:
+                    pass
                 return
             except Exception:
                 pass
@@ -1030,10 +1036,6 @@ class NgrokGUI:
         self.root.attributes('-topmost', True)  # 临时置顶
         self.root.after(100, lambda: self.root.attributes('-topmost', False))  # 100ms后取消置顶
 
-    def _restore_from_minimize(self):
-        """从最小化状态恢复窗口"""
-        self._show_window()
-
     def _ensure_window_visible(self):
         """确保窗口在屏幕可见区域内"""
         try:
@@ -1075,18 +1077,6 @@ class NgrokGUI:
             self.settings_menu.add_separator()
             self.settings_menu.add_command(label="   关闭按钮行为", command=self._change_close_behavior)
 
-        # 帮助菜单
-        self.help_menu = tk.Menu(self.root,
-                               tearoff=0,
-                               bg=self.colors['bg_card'],
-                               fg=self.colors['text_primary'],
-                               activebackground=self.colors['primary_light'],
-                               activeforeground=self.colors['primary'],
-                               relief='flat',
-                               borderwidth=1,
-                               font=self.menu_item_font)
-        self.help_menu.add_command(label="   关于", command=self._show_about)
-
     def _popup_menu(self, menu, widget):
         """在按钮下方弹出菜单"""
         try:
@@ -1099,10 +1089,6 @@ class NgrokGUI:
     def _show_settings_menu(self, event=None):
         """显示设置菜单"""
         self._popup_menu(self.settings_menu, self.settings_button)
-
-    def _show_help_menu(self, event=None):
-        """显示帮助菜单"""
-        self._popup_menu(self.help_menu, self.help_button)
 
     def _create_widgets(self):
         """创建主界面控件"""
@@ -1158,16 +1144,25 @@ class NgrokGUI:
         def open_official_site():
             webbrowser.open("https://www.ngrok.cc/")
 
+        use_mdl2 = sys.platform == "win32"
+        if use_mdl2:
+            try:
+                use_mdl2 = "Segoe MDL2 Assets" in tkfont.families(self.root)
+            except Exception:
+                use_mdl2 = False
+
         def _create_toolbar_button(parent, icon_text, label_text, command):
             btn = tk.Frame(parent, bg=self.colors['button_bg'], padx=10, pady=4, cursor='hand2')
-            icon = tk.Label(
-                btn,
-                text=icon_text,
-                font=('Segoe MDL2 Assets', 10),
-                bg=self.colors['button_bg'],
-                fg=self.colors['text_secondary']
-            )
-            icon.pack(side=tk.LEFT)
+            icon = None
+            if use_mdl2 and icon_text:
+                icon = tk.Label(
+                    btn,
+                    text=icon_text,
+                    font=('Segoe MDL2 Assets', 10),
+                    bg=self.colors['button_bg'],
+                    fg=self.colors['text_secondary']
+                )
+                icon.pack(side=tk.LEFT)
             label = tk.Label(
                 btn,
                 text=label_text,
@@ -1175,16 +1170,18 @@ class NgrokGUI:
                 bg=self.colors['button_bg'],
                 fg=self.colors['text_primary']
             )
-            label.pack(side=tk.LEFT, padx=(4, 0))
+            label.pack(side=tk.LEFT, padx=(4, 0) if icon else (0, 0))
 
             def on_enter(_):
                 btn.configure(bg=self.colors['hover'])
-                icon.configure(bg=self.colors['hover'], fg=self.colors['text_primary'])
+                if icon:
+                    icon.configure(bg=self.colors['hover'], fg=self.colors['text_primary'])
                 label.configure(bg=self.colors['hover'])
 
             def on_leave(_):
                 btn.configure(bg=self.colors['button_bg'])
-                icon.configure(bg=self.colors['button_bg'], fg=self.colors['text_secondary'])
+                if icon:
+                    icon.configure(bg=self.colors['button_bg'], fg=self.colors['text_secondary'])
                 label.configure(bg=self.colors['button_bg'])
 
             def on_click(_):
@@ -1192,7 +1189,10 @@ class NgrokGUI:
 
             btn.bind("<Enter>", on_enter)
             btn.bind("<Leave>", on_leave)
-            for widget in (btn, icon, label):
+            widgets = [btn, label]
+            if icon:
+                widgets.append(icon)
+            for widget in widgets:
                 widget.bind("<Button-1>", on_click)
                 widget.configure(cursor='hand2')
 
@@ -2464,11 +2464,7 @@ class NgrokGUI:
                         self.instance_server.close()
                     except:
                         pass
-                if self.taskbar_proxy:
-                    try:
-                        self.taskbar_proxy.destroy()
-                    except:
-                        pass
+                self._uninstall_taskbar_toggle()
                 self.root.quit()
         else:
             # 关闭单实例服务器
@@ -2477,11 +2473,7 @@ class NgrokGUI:
                     self.instance_server.close()
                 except:
                     pass
-            if self.taskbar_proxy:
-                try:
-                    self.taskbar_proxy.destroy()
-                except:
-                    pass
+            self._uninstall_taskbar_toggle()
             self.root.quit()
 
     def _log_system(self, message):
@@ -2637,6 +2629,7 @@ class NgrokGUI:
                         self.instance_server.close()
                     except:
                         pass
+                self._uninstall_taskbar_toggle()
                 self.root.destroy()
         else:
             # 关闭单实例服务器
@@ -2645,6 +2638,7 @@ class NgrokGUI:
                     self.instance_server.close()
                 except:
                     pass
+            self._uninstall_taskbar_toggle()
             self.root.destroy()
 
 
